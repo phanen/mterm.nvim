@@ -73,6 +73,10 @@ end
 
 function M:is_open() return self.win and api.nvim_win_is_valid(self.win) end
 
+function M:is_open_in_curtab()
+  return self:is_open() and api.nvim_get_current_tabpage() == api.nvim_win_get_tabpage(self.win)
+end
+
 ---@param buf? integer
 ---@param opts? win.Opts
 function M:update(buf, opts)
@@ -92,10 +96,13 @@ function M:get_win() return self.win end
 ---@param opts? win.Opts
 function M:open(buf, opts)
   opts = u.merge(self.opts, opts or {})
-  if self:is_open() then
+  if self:is_open_in_curtab() then
     self:update(buf, opts)
     return
   end
+
+  if self:is_open() then self:close() end
+
   ---@cast buf integer
   self.win = api.nvim_open_win(buf, true, normalize_opts(opts.config))
   if opts.w then vim.iter(opts.w):each(function(k, v) vim.w[self.win][k] = v end) end

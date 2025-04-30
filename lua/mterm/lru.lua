@@ -32,6 +32,7 @@ end
 function M:get(k) return self.hash[k] end
 
 ---@param k lru.key
+---@param v any
 function M:set(k, v) self.hash[k] = v end
 
 ---@param node lru.Node

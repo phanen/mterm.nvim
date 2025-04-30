@@ -130,7 +130,7 @@ end
 
 ---@param opts? term.Opts
 M.toggle = function(opts)
-  if M.win:is_open() then
+  if M.win:is_open_in_curtab() then
     M.win:close()
     return
   end
