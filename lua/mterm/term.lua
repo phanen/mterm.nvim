@@ -38,6 +38,7 @@ local defaults = {
 local M = {}
 
 ---@param opts? term.Opts
+---@return term.Term
 M.new = function(opts)
   opts = u.merge(defaults, opts or {})
   return setmetatable({
@@ -71,6 +72,9 @@ end
 
 function M:destory() -- buf_del will also stop term job...
   if self.buf and api.nvim_buf_is_valid(self.buf) then
+    for _, w in ipairs(fn.win_findbuf(self.buf)) do
+      if api.nvim_win_is_valid(w) then api.nvim_win_close(w, true) end
+    end
     api.nvim_buf_delete(self.buf, { force = true })
     self.buf = nil
   end

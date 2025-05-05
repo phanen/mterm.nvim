@@ -128,12 +128,17 @@ M.open = function(node)
   update_winbar()
 end
 
----@param opts? term.Opts
-M.toggle = function(opts)
+---@return boolean?
+M.close = function()
   if M.win:is_open_in_curtab() then
     M.win:close()
-    return
+    return true
   end
+end
+
+---@param opts? term.Opts
+M.toggle = function(opts)
+  if M.close() then return end
   M.open(opts)
 end
 
