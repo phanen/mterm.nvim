@@ -138,14 +138,11 @@ M.toggle = function(opts)
 end
 
 ---@param cmd string
----@param do_open? boolean
-M.send = function(cmd, do_open)
-  if do_open ~= false then M.open() end
-  if M.curr then
-    local node = M.spawn()
-    vim.wait(100) -- hack: wait e.g. slow fish prompt?...
-    node.term:send(cmd)
-  end
+---@param node mterm.Node
+M.send = function(cmd, node)
+  node = node or M.curr or M.spawn()
+  vim.wait(100) -- hack: wait e.g. slow fish prompt?...
+  node.term:send(cmd)
 end
 
 return M

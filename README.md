@@ -19,18 +19,17 @@ vim.keymap.set('n', '<a-;>', function() require('mterm').toggle() end)
 vim.keymap.set('n', 'go', function()
   if vim.v.count > 0 then return 'go' end
   vim.schedule(function()
-    ---@type table<string, mterm.Node>
+    ---@type table<string, mterm.Node?>
     _G.mterms = _G.mterms or {}
-    local opts = {
-      cmd = { 'lazygit' },
-      cwd = vim.b.gitsigns_status_dict and vim.b.gitsigns_status_dict.root
-        or vim.fs.root(0, '.git'),
-      auto_close = true,
-    }
+    local cwd = vim.b.gitsigns_status_dict and vim.b.gitsigns_status_dict.root
+      or vim.fs.root(0, '.git')
+    local opts = { cmd = { 'lazygit' }, cwd = cwd, auto_close = true }
     local key = vim.inspect(opts)
     local term = _G.mterms[key]
     if not term or not term.term:is_running() then _G.mterms[key] = require('mterm').spawn(opts) end
+    local relpath = fs.relpath(cwd, fn.bufname())
     require('mterm').open(_G.mterms[key])
+    vim.defer_fn(function() require('mterm').send('2/' .. relpath, _G.mterms[key]) end, 100)
   end)
   return '<ignore>'
 end)
