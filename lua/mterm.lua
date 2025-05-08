@@ -98,6 +98,8 @@ M.spawn = function(opts)
   opts = opts or {}
   local node
   local default = {
+    width = M.win:get_config().width,
+    height = M.win:get_config().height - (M.slots.size > 1 and 1 or 0),
     on_exit = function(...)
       local near_node = M.slots:next_of(node) or M.slots:prev_of(node)
       if opts.on_exit then opts.on_exit(...) end

@@ -21,6 +21,8 @@ local u = {
 ---@field on_stdout? function
 ---@field on_stderr? function
 ---@field auto_close? boolean
+---@field height? integer
+---@field width? integer
 ---@field b? table<string, any> buf variable
 ---@field bo? vim.bo buf option
 
@@ -54,19 +56,34 @@ function M:spawn()
   self.buf = api.nvim_create_buf(false, true)
   if opts.b then vim.iter(opts.b):each(function(k, v) vim.b[self.buf][k] = v end) end
   if opts.bo then vim.iter(opts.bo):each(function(k, v) vim.bo[self.buf][k] = v end) end
-  api.nvim_buf_call(self.buf, function()
-    jobstart(opts.cmd, {
-      term = true,
-      clear_env = opts.clear_env,
-      cwd = opts.cwd,
-      env = opts.env,
-      on_stdout = opts.on_stdout,
-      on_stderr = opts.on_stderr,
-      on_exit = function(...)
-        if opts.on_exit then opts.on_exit(...) end
-        if opts.auto_close or vim.deep_equal(opts.cmd, defaults.cmd) then self:destory() end
-      end,
-    })
+  local tmpwin = api.nvim_open_win(self.buf, false, {
+    relative = 'editor',
+    row = 0,
+    col = 0,
+    hide = true,
+    focusable = false,
+    style = 'minimal',
+    width = opts.width or vim.o.columns,
+    height = opts.height or vim.o.lines,
+  })
+  api.nvim_win_call(tmpwin, function()
+    api.nvim_buf_call(self.buf, function()
+      jobstart(opts.cmd, {
+        term = true,
+        clear_env = opts.clear_env,
+        cwd = opts.cwd,
+        env = opts.env,
+        on_stdout = opts.on_stdout,
+        on_stderr = opts.on_stderr,
+        height = opts.height,
+        width = opts.width,
+        on_exit = function(...)
+          if opts.on_exit then opts.on_exit(...) end
+          if opts.auto_close or vim.deep_equal(opts.cmd, defaults.cmd) then self:destory() end
+        end,
+      })
+    end)
+    api.nvim_win_close(tmpwin, true)
   end)
 end
 

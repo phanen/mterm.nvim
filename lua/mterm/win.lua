@@ -8,17 +8,15 @@ local u = {
 
 ---START INJECT class/win.lua
 
----@class win.Win
----@field win? integer
----@field ns_id? integer
----@field opts win.Opts
-
 ---@class win.Opts
 ---@field config vim.api.keyset.win_config
 ---@field w? table<string, any> win variable
 ---@field wo? vim.wo win option
 
 ---@class win.Win
+---@field win? integer
+---@field ns_id? integer
+---@field opts win.Opts
 local M = {}
 
 ---@type win.Opts
@@ -33,7 +31,6 @@ local default = {
     style = 'minimal',
     zindex = 10,
   },
-  ---@diagnostic disable-next-line: missing-fields
   wo = {
     winfixbuf = true,
     winhl = 'Normal:Normal',
@@ -91,6 +88,9 @@ function M:set_buf(buf) set_buf(self.win, buf) end
 function M:get_buf() return api.nvim_win_get_buf(self.win) end
 
 function M:get_win() return self.win end
+
+---@return vim.api.keyset.win_config
+function M:get_config() return normalize_opts(self.opts.config) end
 
 ---@param buf? integer
 ---@param opts? win.Opts
