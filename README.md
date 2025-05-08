@@ -21,15 +21,35 @@ vim.keymap.set('n', 'go', function()
   vim.schedule(function()
     ---@type table<string, mterm.Node?>
     _G.mterms = _G.mterms or {}
-    local cwd = vim.b.gitsigns_status_dict and vim.b.gitsigns_status_dict.root
-      or vim.fs.root(0, '.git')
+    local cwd = (function()
+      if vim.b.gitsigns_status_dict then return vim.b.gitsigns_status_dict.root end
+      if vim.b.git_dir then return vim.b.git_dir end -- fugitive buffer
+      if -- maybe in float gitsigns float buffer (float, no ft)
+        api.nvim_win_get_config(0).relative ~= ''
+        and vim.bo.bt == 'nofile'
+        and vim.b[fn.bufnr('#')].gitsigns_status_dict
+      then
+        return vim.b[fn.bufnr('#')].gitsigns_status_dict.root
+      end
+      return vim.fs.root(0, '.git')
+    end)()
     local opts = { cmd = { 'lazygit' }, cwd = cwd, auto_close = true }
     local key = vim.inspect(opts)
     local term = _G.mterms[key]
-    if not term or not term.term:is_running() then _G.mterms[key] = require('mterm').spawn(opts) end
-    local relpath = fs.relpath(cwd, fn.bufname())
+    local is_init = not term or not term.term:is_running()
+    if is_init then _G.mterms[key] = require('mterm').spawn(opts) end
+    local send = (function()
+      local cword = fn.expand('<cword>'):match('^%x%x%x%x%x%x')
+      if cword then
+        vim.cmd [[fclose!]]
+        return '4/' .. cword
+      end
+      local relpath = fs.relpath(cwd, fn.bufname())
+      if relpath == '.' then relpath = '' end
+      return '2/' .. relpath
+    end)()
     require('mterm').open(_G.mterms[key])
-    vim.defer_fn(function() require('mterm').send('2/' .. relpath, _G.mterms[key]) end, 100)
+    vim.defer_fn(function() require('mterm').send(send, _G.mterms[key]) end, 100)
   end)
   return '<ignore>'
 end)
