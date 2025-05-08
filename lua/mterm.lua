@@ -32,37 +32,24 @@ M.get_key = function()
   return M.i
 end
 
-M.winbar = function()
-  return vim
-    .iter(M.slots:pairs())
-    :enumerate()
-    :map(function(id, _key, node)
-      local hl = M.curr == node and 'TabLineSel' or 'TabLine'
-      return ('%%#%s# %s %%#TabLineFill#'):format(hl, id)
-    end)
-    :join('')
-end
-
-_G._U_MTERM_WINBAR = M.winbar
-
-local update_winbar = function()
+local update_title = function()
   local size = M.slots.size
   if
     not M.win:is_open() or size == 0 -- last buf bdeleted
   then
     return
   end
-  api.nvim_win_call(M.win:get_win(), function()
-    local wbr = vim.wo.winbar
-    if size == 1 then -- we have 'showtabline', but no 'showwinbar'
-      vim.wo.winbar = ''
-      return
-    end
-    if wbr == '' then -- when will this updated?
-      vim.wo.winbar = '%{%v:lua._U_MTERM_WINBAR()%}'
-      return
-    end
-  end)
+  local title = vim
+    .iter(M.slots:pairs())
+    :enumerate()
+    :map(function(id, _key, node)
+      local hl = M.curr == node and 'TabLineSel' or 'TabLine'
+      return { (' %s '):format(id), hl }
+    end)
+    :totable()
+  api.nvim_win_set_config(M.win:get_win(), {
+    title = title,
+  })
 end
 
 ---@param node mterm.Node
@@ -71,7 +58,7 @@ local switch_to = function(node)
   if not M.win:is_open() then return end
   local buf = node.term:get_buf()
   M.win:set_buf(buf)
-  update_winbar() -- why we need it here?
+  update_title() -- why we need it here?
 end
 
 ---@param node? mterm.Node
@@ -104,9 +91,12 @@ M.spawn = function(opts)
       local near_node = M.slots:next_of(node) or M.slots:prev_of(node)
       if opts.on_exit then opts.on_exit(...) end
       M.slots:delete(node)
-      if near_node then switch_to(near_node) end
+      if near_node then
+        switch_to(near_node)
+      else
+      end
       M.curr = near_node
-      update_winbar()
+      update_title()
     end,
     bo = { ft = 'mterm' },
   }
@@ -116,7 +106,7 @@ M.spawn = function(opts)
   }
   M.slots:insert_after(M.curr or M.slots.head, node)
   if not M.curr then M.curr = node end
-  update_winbar()
+  update_title()
   node.term:spawn()
   return node
 end
@@ -127,7 +117,7 @@ M.open = function(node)
   node = node or M.curr or M.spawn()
   M.win:open(node.term:get_buf())
   M.curr = node
-  update_winbar()
+  update_title()
 end
 
 ---@return boolean?
@@ -138,10 +128,10 @@ M.close = function()
   end
 end
 
----@param opts? term.Opts
-M.toggle = function(opts)
+---@param node? mterm.Node
+M.toggle = function(node)
   if M.close() then return end
-  M.open(opts)
+  M.open(node)
 end
 
 ---@param cmd string

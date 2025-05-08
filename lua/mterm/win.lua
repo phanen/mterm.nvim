@@ -41,10 +41,10 @@ local default = {
 ---@return vim.api.keyset.win_config
 local normalize_opts = function(opts)
   local _col, _row = vim.o.columns, vim.o.lines
-  local width = math.ceil(_col * opts.width)
-  local height = math.ceil(_row * opts.height - 4) -- maybe tabline/statusline
-  local col = math.ceil((_col - width) * opts.col)
-  local row = math.ceil((_row - height) * opts.row - 1)
+  local width = opts.width < 1 and math.ceil(_col * opts.width) or opts.width
+  local height = opts.height < 1 and math.ceil(_row * opts.height - 4) or opts.height -- maybe tabline/statusline
+  local col = opts.col < 1 and math.ceil((_col - width) * opts.col) or opts.col
+  local row = opts.row < 1 and math.ceil((_row - height) * opts.row - 1) or opts.row
   return u.merge(opts, { width = width, height = height, col = col, row = row })
 end
 
