@@ -25,7 +25,7 @@ M.slots = u.class.lru {}
 M.curr = nil
 
 ---@type win.Win
-M.win = u.class.win()
+M.win = u.class.win({ config = { zindex = 100 } })
 
 M.get_key = function()
   M.i = (M.i or 0) + 1

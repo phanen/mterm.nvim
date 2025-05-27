@@ -29,8 +29,9 @@ local default = {
     border = _G.border or 'single',
     relative = 'editor',
     style = 'minimal',
-    zindex = 10,
+    zindex = 50,
   },
+  ---@diagnostic disable-next-line: missing-fields
   wo = {
     winfixbuf = true,
     winhl = 'Normal:Normal',
