@@ -11,7 +11,7 @@ local u = {
 ---@class win.Opts
 ---@field config vim.api.keyset.win_config
 ---@field w? table<string, any> win variable
----@field wo? vim.wo win option
+---@field wo? vim.wo|{} win option
 
 ---@class win.Win
 ---@field win? integer

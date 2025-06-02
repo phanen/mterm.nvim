@@ -23,8 +23,8 @@ local u = {
 ---@field auto_close? boolean
 ---@field height? integer
 ---@field width? integer
----@field b? table<string, any> buf variable
----@field bo? vim.bo buf option
+---@field b? { [string]: any } buf variable
+---@field bo? vim.bo|{} buf option
 
 ---@type term.Opts
 local defaults = {
