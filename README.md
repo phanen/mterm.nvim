@@ -26,7 +26,6 @@ vim.keymap.set('n', 'go', function()
     _G.mterms = _G.mterms or {}
     local cwd = (function()
       if vim.b.gitsigns_status_dict then return vim.b.gitsigns_status_dict.root end
-      if vim.b.git_dir then return vim.b.git_dir end -- fugitive buffer
       if -- maybe in float gitsigns float buffer (float, no ft)
         api.nvim_win_get_config(0).relative ~= ''
         and vim.bo.bt == 'nofile'
