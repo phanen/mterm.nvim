@@ -22,10 +22,13 @@ local M = {}
 ---@field hash table<lru.key, mterm.Node>
 M.slots = u.class.lru {}
 
+---@type mterm.Node?
 M.curr = nil
 
 ---@type win.Win
 M.win = u.class.win({ config = { zindex = 100 } })
+
+M.toggle_layout = function() M.win:toggle_layout() end
 
 M.get_key = function()
   M.i = (M.i or 0) + 1

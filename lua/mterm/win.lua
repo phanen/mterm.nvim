@@ -16,6 +16,8 @@ local u = {
 ---@class win.Win
 ---@field win? integer
 ---@field ns_id? integer
+---@field layout? boolean
+---@field last_config? vim.api.keyset.win_config last layout config
 ---@field opts win.Opts
 local M = {}
 
@@ -42,10 +44,11 @@ local default = {
 ---@return vim.api.keyset.win_config
 local normalize_opts = function(opts)
   local _col, _row = vim.o.columns, vim.o.lines
-  local width = opts.width < 1 and math.ceil(_col * opts.width) or opts.width
-  local height = opts.height < 1 and math.ceil(_row * opts.height - 4) or opts.height -- maybe tabline/statusline
-  local col = opts.col < 1 and math.ceil((_col - width) * opts.col) or opts.col
-  local row = opts.row < 1 and math.ceil((_row - height) * opts.row - 1) or opts.row
+  local width = opts.width and opts.width < 1 and math.ceil(_col * opts.width) or opts.width
+  local height = opts.height and opts.height < 1 and math.ceil(_row * opts.height - 4)
+    or opts.height -- maybe tabline/statusline
+  local col = opts.col and opts.col < 1 and math.ceil((_col - width) * opts.col) or opts.col
+  local row = opts.row and opts.row < 1 and math.ceil((_row - height) * opts.row - 1) or opts.row
   return u.merge(opts, { width = width, height = height, col = col, row = row })
 end
 
@@ -120,6 +123,24 @@ function M:open(buf, opts)
       api.nvim_win_set_config(self.win, normalize_opts(opts.config))
     end,
   })
+end
+
+function M:toggle_layout()
+  if self.layout then
+    self.layout = nil
+    self.opts.config = self.last_config
+    self:update()
+  else
+    self.last_config = self.opts.config
+    self.layout = true
+    self.opts.config = {
+      height = 0.3,
+      split = 'below',
+      style = 'minimal',
+      win = -1,
+    }
+    self:update()
+  end
 end
 
 function M:close()
