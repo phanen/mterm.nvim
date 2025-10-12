@@ -56,16 +56,17 @@ function M:spawn()
   self.buf = api.nvim_create_buf(false, true)
   if opts.b then vim.iter(opts.b):each(function(k, v) vim.b[self.buf][k] = v end) end
   if opts.bo then vim.iter(opts.bo):each(function(k, v) vim.bo[self.buf][k] = v end) end
-  local tmpwin = api.nvim_open_win(self.buf, false, {
-    relative = 'editor',
-    row = 0,
-    col = 0,
-    hide = true,
-    focusable = false,
-    style = 'minimal',
-    width = opts.width or vim.o.columns,
-    height = opts.height or vim.o.lines,
-  })
+  local tmpwin = fn.has('nvim-0.11') == 0 and 0
+    or api.nvim_open_win(self.buf, false, {
+      relative = 'editor',
+      row = 0,
+      col = 0,
+      hide = true,
+      focusable = false,
+      style = 'minimal',
+      width = opts.width or vim.o.columns,
+      height = opts.height or vim.o.lines,
+    })
   api.nvim_win_call(tmpwin, function()
     api.nvim_buf_call(self.buf, function()
       jobstart(opts.cmd, {
@@ -83,7 +84,7 @@ function M:spawn()
         end,
       })
     end)
-    api.nvim_win_close(tmpwin, true)
+    if tmpwin ~= 0 then api.nvim_win_close(tmpwin, true) end
   end)
 end
 

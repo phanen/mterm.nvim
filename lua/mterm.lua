@@ -47,9 +47,7 @@ local update_title = function()
       return { (' %s '):format(id), hl }
     end)
     :totable()
-  api.nvim_win_set_config(M.win:get_win(), {
-    title = title,
-  })
+  pcall(api.nvim_win_set_config, M.win:get_win(), { title = title })
 end
 
 ---@param node mterm.Node
