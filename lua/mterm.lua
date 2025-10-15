@@ -160,10 +160,189 @@ end
 
 ---@param cmd string
 ---@param node? mterm.Node
-M.send = function(cmd, node)
+---@param cb function
+M.send = function(cmd, node, cb)
   node = node or M.curr or M.spawn()
-  vim.wait(100) -- hack: wait e.g. slow fish prompt?...
-  node.term:send(cmd)
+  vim.defer_fn(function()
+    node.term:send(cmd)
+    if cb then cb() end
+  end, 100)
+end
+
+---@param key string
+---@param node? mterm.Node
+M.send_key = function(key, node)
+  node = node or M.curr or M.spawn()
+  vim.schedule(function()
+    api.nvim_win_call(M.win.win, function() vim.cmd.norm(vim.keycode(key)) end)
+    vim.b[node.term:get_buf()].term_pos = api.nvim_win_get_cursor(M.win.win)
+  end)
+end
+
+local ns = api.nvim_create_namespace('nvim.terminal.prompt')
+local myns = api.nvim_create_namespace('my.nvim.terminal.prompt')
+
+---@param count integer
+---@param pos? [integer, integer]
+---@param node? mterm.Node
+---@return [integer, integer]
+M.get_prompt = function(count, pos, node)
+  node = assert(node or M.curr, 'no terminal instance')
+  pos = pos
+    or (M.win.win and api.nvim_win_get_cursor(M.win.win))
+    or vim.b[node.term:get_buf()].term_pos
+    or { 1, 0 }
+  local row, col = unpack(pos)
+  local start = -1
+  local end_ ---@type 0|-1
+  if count > 0 then
+    start = row
+    end_ = -1
+  elseif count < 0 then
+    start = row - 2
+    end_ = 0
+  else
+    error('wrong count')
+  end
+
+  if start < 0 then return { end_, 0 } end
+
+  local extmarks = api.nvim_buf_get_extmarks(
+    node.term:get_buf(),
+    ns,
+    { start, col },
+    end_,
+    { limit = math.abs(count) }
+  )
+  if #extmarks > 0 then
+    local extmark = assert(extmarks[math.min(#extmarks, math.abs(count))])
+    return { extmark[2] + 1, extmark[3] }
+  end
+
+  return { end_, 0 }
+end
+
+M.get_prompt_range = function()
+  local prev_prompt = u.mterm.get_prompt(-1)
+  local next_prompt = u.mterm.get_prompt(1, prev_prompt)
+  if next_prompt[1] == -1 then
+    next_prompt = prev_prompt
+    prev_prompt = u.mterm.get_prompt(-1, next_prompt)
+  end
+  return prev_prompt[1], next_prompt[1]
+end
+
+---@param line string
+---@return table
+M.parse_line = function(line)
+  local prefix, filename, suffix = line:match('(DEBUGPRINT%[%d+%]:%s*)(%S+:%d+)(.*)')
+  return {
+    line = line,
+    content = line:match('^DEBUGPRINT%[%d+%]:%s*(.*)'),
+    filename = filename,
+    prefix = prefix,
+    suffix = suffix,
+  }
+end
+
+local mark
+local render = function(buf, lnum, ctx)
+  pcall(api.nvim_buf_del_extmark, buf, myns, mark)
+  local opts = {
+    virt_text_pos = 'overlay',
+    virt_text = {
+      { ctx.prefix, 'DiagnosticVirtualTextHint' },
+      { ctx.filename, 'DiagnosticVirtualTextInfo' },
+      { ctx.suffix, 'DiagnosticVirtualTextWarn' },
+    },
+  }
+  mark = api.nvim_buf_set_extmark(buf, myns, lnum, 0, opts)
+end
+
+M.attach_nav = function(buf)
+  api.nvim_create_autocmd('CursorMoved', {
+    buffer = buf,
+    group = api.nvim_create_augroup('my.mterm', { clear = true }),
+    callback = function()
+      local line = api.nvim_get_current_line()
+      pcall(api.nvim_buf_del_extmark, buf, myns, mark)
+      local ctx = M.parse_line(line)
+      if ctx.filename then
+        local lnum = fn.line('.') - 1
+        render(buf, lnum, ctx)
+      end
+    end,
+  })
+end
+
+local pp = false and u.pp or function(...) end
+
+M.set_cursor = function(pos)
+  api.nvim_win_set_cursor(M.win.win, pos)
+  vim.b[M.curr.term:get_buf()].term_pos = pos
+end
+
+M.next_dp = function()
+  local prev_prompt, next_prompt = M.get_prompt_range()
+  local win = assert(M.win.win)
+  local buf = M.curr.term:get_buf()
+  local lnum = fn.line('.', win) - 1
+  assert(
+    lnum >= prev_prompt and lnum <= next_prompt,
+    'p:' .. prev_prompt .. ' n:' .. next_prompt .. ' l:' .. lnum
+  )
+  pp(lnum, prev_prompt, next_prompt)
+  local ctx, wrapped
+  while true do
+    lnum = lnum + 1
+    if not wrapped and lnum >= next_prompt then
+      lnum = prev_prompt
+      wrapped = true
+    elseif wrapped and lnum >= next_prompt then
+      return pp('no matched')
+    end
+    local ok, lines = pcall(api.nvim_buf_get_lines, buf, lnum, lnum + 1, true)
+    if not ok then pp(lnum, prev_prompt, next_prompt) end
+    ctx = M.parse_line(lines[1])
+    if ctx.filename then break end
+  end
+  local n, d = ctx.filename:match('(.*):(%d+)')
+  vim.cmd.edit('+' .. d .. ' ' .. n)
+  pp(lnum, prev_prompt, next_prompt)
+  render(buf, lnum, ctx)
+  M.set_cursor({ lnum + 1, 0 })
+end
+
+M.prev_dp = function()
+  local prev_prompt, next_prompt = M.get_prompt_range()
+  local win = assert(M.win.win)
+  local buf = M.curr.term:get_buf()
+  local lnum = fn.line('.', win) - 1
+  assert(
+    lnum >= prev_prompt and lnum <= next_prompt,
+    'p:' .. prev_prompt .. ' n:' .. next_prompt .. ' l:' .. lnum
+  )
+  pp(lnum, prev_prompt, next_prompt)
+  local ctx, wrapped
+  while true do
+    lnum = lnum - 1
+    if not wrapped and lnum < prev_prompt then
+      lnum = next_prompt - 1
+      wrapped = true
+    elseif wrapped and lnum < prev_prompt then
+      return pp('no matched')
+    end
+
+    local ok, lines = pcall(api.nvim_buf_get_lines, buf, lnum, lnum + 1, true)
+    if not ok then pp(lnum, prev_prompt, next_prompt) end
+    ctx = M.parse_line(lines[1])
+    if ctx.filename then break end
+  end
+  local n, d = ctx.filename:match('(.*):(%d+)')
+  vim.cmd.edit('+' .. d .. ' ' .. n)
+  pp(lnum, prev_prompt, next_prompt)
+  render(buf, lnum, ctx)
+  M.set_cursor({ lnum + 1, 0 })
 end
 
 return M

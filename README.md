@@ -1,30 +1,22 @@
-A group of term buf in a toggle-able floatwin.
+Multiplex single win for a group of term buf.
+
+## highlight
+* Togglable layout.
+* Debugprint extmarks.
+* Navigation in debugprint lines.
 
 ```sh
 nvim --clean --cmd 'set rtp^=.'
 ```
 
-## api
-```lua
-require('mterm').toggle()
-require('mterm').next()
-require('mterm').prev()
-require('mterm').spawn()
-require('mterm').send()
-require('mterm').smart_toggle()
-require('mterm').toggle_focus()
-```
-
 > [!NOTE]
-> If you find painful to work with mode/cursor: https://github.com/phanen/termmode.nvim.
+> Enhancement of terminal mode/cursor: https://github.com/phanen/termmode.nvim.
 
-## example
+
+<details>
+<summary>example: toggle dwim</summary>
 
 ```lua
--- simple toggle
-vim.keymap.set('n', '<a-;>', function() require('mterm').smart_toggle() end)
-
--- toggle lazygit dwim
 vim.keymap.set('n', 'go', function()
   if vim.v.count > 0 then return 'go' end
   vim.schedule(function()
@@ -45,7 +37,7 @@ vim.keymap.set('n', 'go', function()
     local key = vim.inspect(opts)
     local term = _G.mterms[key]
     local is_init = not term or not term.term:is_running()
-    if is_init then _G.mterms[key] = require('mterm').spawn(opts) end
+    if is_init then _G.mterms[key] = mterm.spawn(opts) end
     local send = (function()
       local cword = fn.expand('<cword>'):match('^%x%x%x%x%x%x')
       if cword then
@@ -56,13 +48,36 @@ vim.keymap.set('n', 'go', function()
       if relpath == '.' then relpath = '' end
       return '2/' .. relpath
     end)()
-    require('mterm').open(_G.mterms[key])
-    vim.defer_fn(function() require('mterm').send(send, _G.mterms[key]) end, 100)
+    mterm.open(_G.mterms[key])
+    vim.defer_fn(function() mterm.send(send, _G.mterms[key]) end, 100)
   end)
   return '<ignore>'
 end)
+```
+</details>
 
--- scbk=0 an alternative way
+<details>
+<summary>example: goto file</summary>
+
+```lua
+-- vim.keymap.set('n', '<cr>', '<c-w>gF', { buffer = true })
+vim.keymap.set('n', '<cr>', function()
+  local ctx = mterm.parse_line(api.nvim_get_current_line())
+  if not ctx.filename then return '<c-w>gF' end
+  local name, lnum = ctx.filename:match('(.*):(%d+)')
+  local alt_win = fn.win_getid((fn.winnr('#')))
+  vim.schedule(function()
+    api.nvim_win_call(alt_win, function() vim.cmd.edit('+' .. lnum .. ' ' .. name) end)
+  end)
+  return '<ignore>'
+end, { expr = true, buffer = terminal_buf })
+```
+</details>
+
+<details>
+<summary>example: scbk=0 an alternative way</summary>
+
+```lua
 vim.keymap.set('n', '<c-l>', function()
   local chan = vim.bo.channel
   local is_running = fn.jobwait({ chan }, 0)[1] == -1
@@ -95,30 +110,40 @@ vim.keymap.set('n', '<c-l>', function()
     return '<ignore>'
   end
   vim.schedule(function()
-    require('mterm').spawn()
-    require('mterm').next()
+    mterm.spawn()
+    mterm.next()
     fn.jobstop(chan)
   end)
   return '<ignore>'
 end, { expr = true, buffer = terminal_buf })
-
--- `ftplugin/mterm.lua` or `au FileType mterm`
-vim.keymap.set('n', '<cr>', '<c-w>gF', { buffer = true })
-vim.keymap.set('t', '<a-;>', function() require('mterm').smart_toggle() end, { buffer = true })
-vim.keymap.set('<a-j>', function() require('mterm').next() end, { buffer = true })
-vim.keymap.set('<a-k>', function() require('mterm').prev() end, { buffer = true })
-vim.keymap.set('<a-h>', function() require('mterm').toggle_layout() end, { buffer = true })
-vim.keymap.set('<a-l>', function()
-  require('mterm').spawn()
-  require('mterm').next()
-end, { buffer = true })
 ```
+</details>
+
+<details>
+<summary>example: task runner</summary>
+
+```lua
+local runners = { javascript = 'node {file}', rust = 'cargo run {file}' }
+Task.termrun = function()
+  -- fetch project-local config
+  local cmd = u.project(uv.cwd()).runner or runners[vim.bo.ft]
+  if not cmd then return end
+  cmd = cmd:gsub('%{file%}', api.nvim_buf_get_name(0))
+  if mt.is_empty() then
+    mt.open(nil, false, { layout = 'bot' })
+  else
+    mt.open()
+  end
+  mt.send_key('G')
+  mt.send(cmd, nil, function() mt.attach_nav(mt.curr.term:get_buf()) end)
+end
+```
+</details>
 
 ## todo
-* task management... spawn a new task by `:send`
-  * (wait... why cannot I use `:tab term {cmd}`)
-* tmux session (will nvim has a better `sessionoptions` for terminal)?
+* persistent session (will nvim has a better `sessionoptions` for terminal)?
 * make 'efm' work with term buffer via osc133, term should work like qf
 
 ## credit
 * https://github.com/numToStr/FTerm.nvim
+* https://github.com/andrewferrier/debugprint.nvim
