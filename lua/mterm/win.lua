@@ -74,9 +74,13 @@ end
 
 function M:is_open() return self.win and api.nvim_win_is_valid(self.win) end
 
+function M:is_focused() return self.win == api.nvim_get_current_win() end
+
 function M:is_open_in_curtab()
   return self:is_open() and api.nvim_get_current_tabpage() == api.nvim_win_get_tabpage(self.win)
 end
+
+function M:focus() return api.nvim_set_current_win(self.win) end
 
 ---@param buf? integer
 ---@param opts? win.Opts

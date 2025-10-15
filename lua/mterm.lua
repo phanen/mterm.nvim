@@ -135,6 +135,24 @@ M.toggle = function(node)
   M.open(node)
 end
 
+M.toggle_focus = function()
+  if M.win:is_focused() then
+    vim.cmd.wincmd('p')
+  elseif M.win:is_open_in_curtab() then
+    M.win:focus()
+  else
+    M.open()
+  end
+end
+
+M.smart_toggle = function()
+  if M.win.layout then
+    M.toggle_focus()
+  else
+    M.toggle()
+  end
+end
+
 ---@param cmd string
 ---@param node mterm.Node
 M.send = function(cmd, node)

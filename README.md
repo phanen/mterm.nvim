@@ -1,5 +1,9 @@
 A group of term buf in a toggle-able floatwin.
 
+```sh
+nvim --clean --cmd 'set rtp^=.'
+```
+
 ## api
 ```lua
 require('mterm').toggle()
@@ -7,6 +11,8 @@ require('mterm').next()
 require('mterm').prev()
 require('mterm').spawn()
 require('mterm').send()
+require('mterm').smart_toggle()
+require('mterm').toggle_focus()
 ```
 
 > [!NOTE]
@@ -16,7 +22,7 @@ require('mterm').send()
 
 ```lua
 -- simple toggle
-vim.keymap.set('n', '<a-;>', function() require('mterm').toggle() end)
+vim.keymap.set('n', '<a-;>', function() require('mterm').smart_toggle() end)
 
 -- toggle lazygit dwim
 vim.keymap.set('n', 'go', function()
@@ -98,7 +104,7 @@ end, { expr = true, buffer = terminal_buf })
 
 -- `ftplugin/mterm.lua` or `au FileType mterm`
 vim.keymap.set('n', '<cr>', '<c-w>gF', { buffer = true })
-vim.keymap.set('t', '<a-;>', function() require('mterm').toggle() end, { buffer = true })
+vim.keymap.set('t', '<a-;>', function() require('mterm').smart_toggle() end, { buffer = true })
 vim.keymap.set('<a-j>', function() require('mterm').next() end, { buffer = true })
 vim.keymap.set('<a-k>', function() require('mterm').prev() end, { buffer = true })
 vim.keymap.set('<a-h>', function() require('mterm').toggle_layout() end, { buffer = true })
@@ -112,6 +118,7 @@ end, { buffer = true })
 * task management... spawn a new task by `:send`
   * (wait... why cannot I use `:tab term {cmd}`)
 * tmux session (will nvim has a better `sessionoptions` for terminal)?
+* make 'efm' work with term buffer via osc133, term should work like qf
 
 ## credit
 * https://github.com/numToStr/FTerm.nvim
