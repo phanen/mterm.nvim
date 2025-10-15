@@ -35,6 +35,8 @@ M.get_key = function()
   return M.i
 end
 
+M.is_empty = function() return not M.curr end
+
 local update_title = function()
   local size = M.slots.size
   if
@@ -113,10 +115,13 @@ M.spawn = function(opts)
 end
 
 ---@param node? mterm.Node
-M.open = function(node)
+---@param focus? boolean
+---@param opts? win.Opts|{}
+M.open = function(node, focus, opts)
   ---@type mterm.Node
   node = node or M.curr or M.spawn()
-  M.win:open(node.term:get_buf())
+  M.win:update(nil, opts)
+  M.win:open(node.term:get_buf(), focus)
   M.curr = node
   update_title()
 end
@@ -146,7 +151,7 @@ M.toggle_focus = function()
 end
 
 M.smart_toggle = function()
-  if M.win.layout then
+  if M.win.opts.layout ~= 'float' then
     M.toggle_focus()
   else
     M.toggle()
@@ -154,7 +159,7 @@ M.smart_toggle = function()
 end
 
 ---@param cmd string
----@param node mterm.Node
+---@param node? mterm.Node
 M.send = function(cmd, node)
   node = node or M.curr or M.spawn()
   vim.wait(100) -- hack: wait e.g. slow fish prompt?...

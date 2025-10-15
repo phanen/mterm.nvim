@@ -8,22 +8,30 @@ local u = {
 
 ---START INJECT class/win.lua
 
+---@class win.Cfg: vim.api.keyset.win_config|{}
+---@field height? number
+---@field width? number
+---@field col? number
+---@field row? number
+
 ---@class win.Opts
----@field config vim.api.keyset.win_config
----@field w? table<string, any> win variable
----@field wo? vim.wo|{} win option
+---@field config win.Cfg
+---@field w table<string, any> win variable
+---@field wo vim.wo|{} win option
+---@field layout win.layout
+
+---@alias win.layout "float"|"bot"
 
 ---@class win.Win
 ---@field win? integer
 ---@field ns_id? integer
----@field layout? boolean
----@field last_config? vim.api.keyset.win_config last layout config
+---@field config win.Cfg last applied config
 ---@field opts win.Opts
 local M = {}
 
----@type win.Opts
-local default = {
-  config = {
+---@type { [win.layout]: win.Cfg }
+local layouts = {
+  float = {
     height = 0.95,
     width = 0.95,
     col = 0.5,
@@ -33,14 +41,25 @@ local default = {
     style = 'minimal',
     zindex = 50,
   },
-  ---@diagnostic disable-next-line: missing-fields
+  bot = {
+    height = 0.3,
+    split = 'below',
+    style = 'minimal',
+    win = -1,
+  },
+}
+
+---@type win.Opts|{}
+local default = {
+  config = {},
   wo = {
     winfixbuf = true,
     winhl = 'Normal:Normal',
   },
+  layout = 'float',
 }
 
----@param opts vim.api.keyset.win_config
+---@param opts win.Cfg
 ---@return vim.api.keyset.win_config
 local normalize_opts = function(opts)
   local _col, _row = vim.o.columns, vim.o.lines
@@ -50,6 +69,23 @@ local normalize_opts = function(opts)
   local col = opts.col and opts.col < 1 and math.ceil((_col - width) * opts.col) or opts.col
   local row = opts.row and opts.row < 1 and math.ceil((_row - height) * opts.row - 1) or opts.row
   return u.merge(opts, { width = width, height = height, col = col, row = row })
+end
+
+---@param opts win.Cfg
+---@param layout win.layout
+---@return win.Cfg
+local normalize_layout = function(opts, layout)
+  opts = u.merge(layouts[layout], opts)
+  if layout ~= 'float' then
+    opts.row = nil
+    opts.col = nil
+    opts.border = nil
+    opts.relative = nil
+    opts.zindex = nil
+  else
+    opts.split = nil
+  end
+  return opts
 end
 
 ---@param win integer
@@ -64,11 +100,14 @@ local set_buf = function(win, buf)
   end
 end
 
----@param opts? win.Opts
+---@param opts? win.Opts|{}
 ---@return win.Win
 M.new = function(opts)
+  opts = u.merge(default, opts or {})
   return setmetatable({
-    opts = u.merge(default, opts or {}),
+    opts = opts,
+    config = normalize_layout(opts.config, opts.layout),
+    layout = opts.layout,
   }, { __index = M })
 end
 
@@ -83,12 +122,13 @@ end
 function M:focus() return api.nvim_set_current_win(self.win) end
 
 ---@param buf? integer
----@param opts? win.Opts
+---@param opts? win.Opts|{}
 function M:update(buf, opts)
   if opts then self.opts = u.merge(self.opts, opts) end
+  self.config = normalize_layout(self.opts.config, self.opts.layout)
   if not self:is_open() then return end
-  if buf then set_buf(self.win, buf) end
-  api.nvim_win_set_config(self.win, normalize_opts(self.opts.config))
+  if buf then self:set_buf(buf) end
+  api.nvim_win_set_config(self.win, normalize_opts(self.config))
 end
 
 function M:set_buf(buf) set_buf(self.win, buf) end
@@ -98,53 +138,37 @@ function M:get_buf() return api.nvim_win_get_buf(self.win) end
 function M:get_win() return self.win end
 
 ---@return vim.api.keyset.win_config
-function M:get_config() return normalize_opts(self.opts.config) end
+function M:get_config() return normalize_opts(self.config) end
 
 ---@param buf? integer
----@param opts? win.Opts
-function M:open(buf, opts)
-  opts = u.merge(self.opts, opts or {})
+---@param focus? boolean
+function M:open(buf, focus)
+  focus = focus == nil or focus
   if self:is_open_in_curtab() then
-    self:update(buf, opts)
+    self:update(buf)
     return
   end
 
   if self:is_open() then self:close() end
 
   ---@cast buf integer
-  self.win = api.nvim_open_win(buf, true, normalize_opts(opts.config))
-  if opts.w then vim.iter(opts.w):each(function(k, v) vim.w[self.win][k] = v end) end
-  if opts.wo then
-    vim.iter(opts.wo):each(function(k, v)
-      if fn.exists('&' .. k) == 1 then vim.wo[self.win][k] = v end
-    end)
-  end
+  self.win = api.nvim_open_win(buf, focus, normalize_opts(self.config))
+  vim.iter(self.opts.w or {}):each(function(k, v) vim.w[self.win][k] = v end)
+  vim.iter(self.opts.wo or {}):each(function(k, v) --don't use vim.wo[k][0] for compat
+    if fn.exists('&' .. k) == 1 then vim.wo[self.win][k] = v end
+  end)
   self.ns_id = api.nvim_create_augroup('u.win._' .. self.win, { clear = true })
   api.nvim_create_autocmd('VimResized', {
     group = self.ns_id,
     callback = function()
       if not self:is_open() then return true end
-      api.nvim_win_set_config(self.win, normalize_opts(opts.config))
+      api.nvim_win_set_config(self.win, normalize_opts(self.config))
     end,
   })
 end
 
 function M:toggle_layout()
-  if self.layout then
-    self.layout = nil
-    self.opts.config = self.last_config
-    self:update()
-  else
-    self.last_config = self.opts.config
-    self.layout = true
-    self.opts.config = {
-      height = 0.3,
-      split = 'below',
-      style = 'minimal',
-      win = -1,
-    }
-    self:update()
-  end
+  self:update(nil, { layout = (self.opts.layout == 'float' and 'bot' or 'float') })
 end
 
 function M:close()
