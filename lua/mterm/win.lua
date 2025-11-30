@@ -1,4 +1,3 @@
----@diagnostic disable: duplicate-doc-field, duplicate-set-field, duplicate-doc-alias, unused-local, undefined-field
 local fn, api, uv = vim.fn, vim.api, vim.uv
 local u = {
   merge = function(...)

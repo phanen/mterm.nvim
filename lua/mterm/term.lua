@@ -1,4 +1,3 @@
----@diagnostic disable: duplicate-doc-field, duplicate-set-field, duplicate-doc-alias, unused-local, undefined-field
 local fn, api, uv = vim.fn, vim.api, vim.uv
 local u = {
   merge = function(...)
@@ -8,12 +7,13 @@ local u = {
 
 ---START INJECT class/term.lua
 
+---@diagnostic disable: duplicate-type
 ---@class term.Term
 ---@field buf? integer
 ---@field opts term.Opts
 
 ---@class term.Opts
----@field cmd? string[]
+---@field cmd string[]
 ---@field cwd? string
 ---@field clear_env? boolean
 ---@field env? table
@@ -98,8 +98,27 @@ function M:destory() -- buf_del will also stop term job...
   end
 end
 
----@return integer
+---@return integer?
 function M:get_buf() return self.buf end
+
+---@return integer?
+function M:get_win()
+  local win = fn.bufwinid(self.buf)
+  if win ~= -1 then return win end
+end
+
+---@return [integer, integer]
+function M:get_cursor()
+  local win = self:get_win()
+  return win and api.nvim_win_get_cursor(win) or vim.b[self.buf].term_pos
+end
+
+---@param pos [integer, integer]
+function M:set_cursor(pos)
+  local win = self:get_win()
+  if win then api.nvim_win_set_cursor(win, pos) end
+  vim.b[self.buf].term_pos = pos
+end
 
 ---@return boolean
 function M:is_running()
@@ -108,5 +127,81 @@ end
 
 ---@param cmd string
 function M:send(cmd) api.nvim_chan_send(vim.bo[self.buf].channel, cmd .. '\r') end
+
+local ns = api.nvim_create_namespace('nvim.terminal.prompt')
+
+---@param count integer
+---@param pos? [integer, integer]
+---@return [integer, integer]
+function M:get_prompt(count, pos)
+  local buf = assert(self.buf)
+  pos = pos or self:get_cursor() or { 1, 0 }
+  local row, col = unpack(pos)
+  local start = -1
+  local end_ ---@type 0|-1
+  if count > 0 then
+    start = row
+    end_ = -1
+  elseif count < 0 then
+    start = row - 2
+    end_ = 0
+  else
+    error('wrong count')
+  end
+
+  if start < 0 then return { end_, 0 } end
+
+  local extmarks = api.nvim_buf_get_extmarks(
+    buf,
+    ns,
+    { start, col },
+    end_,
+    { limit = math.abs(count) }
+  )
+  if #extmarks > 0 then
+    local extmark = assert(extmarks[math.min(#extmarks, math.abs(count))])
+    return { extmark[2] + 1, extmark[3] }
+  end
+
+  return { end_, 0 }
+end
+
+function M:get_prompt_range()
+  local prev_prompt = self:get_prompt(-1)
+  local next_prompt = self:get_prompt(1, prev_prompt)
+  if next_prompt[1] == -1 then
+    next_prompt = prev_prompt
+    prev_prompt = self:get_prompt(-1, next_prompt)
+  end
+  return prev_prompt[1], next_prompt[1]
+end
+
+function M:_dp_impl(cb, wrap, direction)
+  local prev_prompt, next_prompt = self:get_prompt_range()
+  local buf = assert(self:get_buf())
+  local lnum = (unpack(self:get_cursor()))
+  lnum = math.min((math.max(lnum, prev_prompt)), next_prompt)
+  wrap = wrap ~= false
+
+  local total_lines = next_prompt - prev_prompt + 1
+  local searched = 0
+  while searched < total_lines do
+    lnum = lnum + direction
+    if lnum > next_prompt then
+      if not wrap then break end
+      lnum = prev_prompt
+    elseif lnum < prev_prompt then
+      if not wrap then break end
+      lnum = next_prompt
+    end
+    local line = api.nvim_buf_get_lines(buf, lnum, lnum + 1, false)[1]
+    if cb(line, lnum) then return end
+    searched = searched + 1
+  end
+end
+
+function M:next_dp(cb, wrap) self:_dp_impl(cb, wrap, 1) end
+
+function M:prev_dp(cb, wrap) self:_dp_impl(cb, wrap, -1) end
 
 return M
