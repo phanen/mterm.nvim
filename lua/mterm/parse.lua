@@ -31,11 +31,13 @@ end
 ---@field col? string
 
 ---@param line? string
+---@param only? boolean debugprint only
 ---@return parse.ParseLineResult
-M.from_line = function(line)
+M.from_line = function(line, only)
   line = line or api.nvim_get_current_line()
+  only = only ~= false
   local prefix, filename, lnum, suffix = line:match('(DEBUGPRINT%[%d+%]:%s*)(%S+):(%d+)(.*)')
-  if not prefix then
+  if not only and not prefix then
     ---@diagnostic disable-next-line: redefined-local
     local file, lnum, col = from_cword()
     return { line = line, filename = file, lnum = lnum, col = col }

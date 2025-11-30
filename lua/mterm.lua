@@ -114,6 +114,7 @@ M.spawn = function(opts)
   update_title()
   node.term:spawn()
   M._attach_render(node)
+  M._attach_linter(node)
   return node
 end
 
@@ -163,13 +164,9 @@ end
 
 ---@param cmd string
 ---@param node? mterm.Node
----@param cb? function
-M.send = function(cmd, node, cb)
+M.send = function(cmd, node)
   node = node or curr or M.spawn()
-  vim.defer_fn(function()
-    node.term:send(cmd)
-    if cb then cb() end
-  end, 100)
+  vim.defer_fn(function() node.term:send(cmd) end, 100)
 end
 
 ---@param key string
@@ -185,12 +182,12 @@ end
 local mark ---@type integer?
 local myns = api.nvim_create_namespace('my.nvim.terminal.prompt')
 
----@param buf integer
----@param lnum integer
+---@param buf integer extmark buf
+---@param lnum integer extmark lnum
 ---@param ctx? parse.ParseLineResult
 ---@return boolean?
 local render = function(buf, lnum, ctx)
-  ctx = ctx or u.parse.from_line()
+  ctx = ctx or u.parse.from_line(api.nvim_buf_get_lines(buf, lnum, lnum + 1, false)[1])
   if mark then
     pcall(api.nvim_buf_del_extmark, buf, myns, mark)
     mark = nil
@@ -209,22 +206,27 @@ local render = function(buf, lnum, ctx)
 end
 
 ---@param ctx? parse.ParseLineResult
-M.gotofile = function(ctx)
+---@param focus? boolean
+M.gotofile = function(ctx, focus)
   ctx = ctx or u.parse.from_line()
-  local altwin = fn.win_getid((fn.winnr('#')))
-  if not ctx.filename or altwin == -1 then return '<c-w>gF' end
+  local win = vim.bo.filetype ~= 'mterm' and api.nvim_get_current_win()
+    or fn.win_getid((fn.winnr('#')))
+  if not ctx.filename or win == -1 then return '<c-w>gF' end
   vim.schedule(function()
-    local buf = api.nvim_win_get_buf(altwin)
-    vim._with({ win = altwin, buf = buf }, function()
-      if fn.bufname() ~= ctx.filename then
+    local buf = api.nvim_win_get_buf(win)
+    local should_focus = focus
+    vim._with({ win = win, buf = buf }, function()
+      if vim.fs.abspath(fn.bufname()) ~= vim.fs.abspath(ctx.filename) then
         if not pcall(vim.cmd.buffer, ctx.filename) then vim.cmd.edit(ctx.filename) end
+        should_focus = false
       end
-      if ctx.lnum and fn.line('.', altwin) ~= ctx.lnum then ---@diagnostic disable-next-line: param-type-mismatch
+      if ctx.lnum and fn.line('.', win) ~= tonumber(ctx.lnum) then ---@diagnostic disable-next-line: param-type-mismatch
         fn.cursor(ctx.lnum, tonumber(ctx.col) or 0)
+        should_focus = false
       end
       vim.cmd('norm! zz')
     end)
-    M.smart_toggle()
+    if should_focus and vim.bo.filetype == 'mterm' then M.smart_toggle() end
   end)
   return '<ignore>'
 end
@@ -235,9 +237,8 @@ M.next_dp = function(node)
   local buf = assert(term:get_buf())
   term:next_dp(function(line, lnum)
     local ctx = u.parse.from_line(line)
-    if render(buf, lnum, ctx) then
+    if render(buf, lnum - 1, ctx) then
       M.gotofile(ctx)
-      term:set_cursor({ lnum, select(2, unpack(term:get_cursor())) })
       return true
     end
   end)
@@ -249,21 +250,49 @@ M.prev_dp = function(node)
   local buf = assert(term:get_buf())
   term:prev_dp(function(line, lnum)
     local ctx = u.parse.from_line(line)
-    if render(buf, lnum, ctx) then
+    if render(buf, lnum - 1, ctx) then
       M.gotofile(ctx)
-      term:set_cursor({ lnum, select(2, unpack(term:get_cursor())) })
       return true
     end
   end)
 end
 
+---@param node mterm.Node
 M._attach_render = function(node)
-  local buf = node.term:get_buf()
-  api.nvim_create_autocmd('CursorMoved', {
-    buffer = buf,
-    group = api.nvim_create_augroup('my.mterm', { clear = true }),
-    callback = function() render(buf, fn.line('.') - 1) end,
-  })
+  node.term:on('CursorMoved', function(args) render(args.buf, fn.line('.') - 1) end)
+end
+
+---@param node mterm.Node
+M._attach_linter = function(node)
+  local term = node.term
+  local buf = assert(term:get_buf())
+  local ns = api.nvim_create_namespace('linter.debugprint')
+  term:on('TermRequest', function(args)
+    if not args.data.sequence:match('^\027]133;A') then return end
+    local prev_prompt, next_prompt = term:get_prompt_range()
+    local lines = api.nvim_buf_get_lines(buf, prev_prompt + 1, next_prompt, false)
+    ---@type table<integer, vim.Diagnostic.Set[]>
+    local dmap = {}
+    vim.iter(lines):each(function(line)
+      local parsed = u.parse.from_line(line)
+      local lnum = tonumber(parsed.lnum)
+      if not lnum then return end
+      local dbuf = parsed.filename and fn.bufadd(parsed.filename) or nil
+      if not dbuf then return end
+      dmap[dbuf] = dmap[dbuf] or {}
+      ---@type vim.Diagnostic.Set
+      local diag = {
+        lnum = lnum - 1,
+        col = tonumber(parsed.col),
+        message = parsed.suffix or '',
+        severity = vim.diagnostic.severity.WARN,
+      }
+      table.insert(dmap[dbuf], diag)
+    end)
+    for dbuf, diags in pairs(dmap) do
+      vim.diagnostic.set(ns, dbuf, diags)
+    end
+  end)
 end
 
 return M

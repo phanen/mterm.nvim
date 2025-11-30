@@ -94,6 +94,7 @@ function M:destory() -- buf_del will also stop term job...
       if api.nvim_win_is_valid(w) then api.nvim_win_close(w, true) end
     end
     api.nvim_buf_delete(self.buf, { force = true })
+    pcall(api.nvim_del_augroup_by_name, 'my.term.' .. self.buf)
     self.buf = nil
   end
 end
@@ -118,6 +119,16 @@ function M:set_cursor(pos)
   local win = self:get_win()
   if win then api.nvim_win_set_cursor(win, pos) end
   vim.b[self.buf].term_pos = pos
+end
+
+---@param event vim.api.keyset.events|vim.api.keyset.events[]
+---@param cb function
+function M:on(event, cb)
+  return api.nvim_create_autocmd(event, {
+    buffer = self.buf,
+    group = api.nvim_create_augroup('my.term.' .. self.buf, { clear = false }),
+    callback = cb,
+  })
 end
 
 ---@return boolean
@@ -194,8 +205,11 @@ function M:_dp_impl(cb, wrap, direction)
       if not wrap then break end
       lnum = next_prompt
     end
-    local line = api.nvim_buf_get_lines(buf, lnum, lnum + 1, false)[1]
-    if cb(line, lnum) then return end
+    local line = api.nvim_buf_get_lines(buf, lnum - 1, lnum, false)[1]
+    if cb(line, lnum) then
+      self:set_cursor({ lnum, select(2, unpack(self:get_cursor())) })
+      return
+    end
     searched = searched + 1
   end
 end

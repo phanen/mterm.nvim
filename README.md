@@ -1,9 +1,7 @@
-Multiplex single win for a group of term buf.
-
 ## highlight
+* Tabbed buffer in single window.
 * Togglable layout.
-* Debugprint extmarks.
-* Navigation in debugprint lines.
+* Debugprint highlighting/diagnostics/Navigation.
 
 ```sh
 nvim --clean --cmd 'set rtp^=.'
@@ -15,6 +13,7 @@ nvim --clean --cmd 'set rtp^=.'
 ## todo
 * persistent session (will nvim has a better `sessionoptions` for terminal)?
 * make 'efm' work with term buffer via osc133, term should work like qf
+  * from_errorformat in https://github.com/mfussenegger/nvim-lint/blob/1b9cc3ba24953e83319c4f77741553c0564af596/lua/lint/parser.lua#L21
 
 ## credit
 * https://github.com/numToStr/FTerm.nvim
