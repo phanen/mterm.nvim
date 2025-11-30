@@ -212,15 +212,17 @@ end
 M.gotofile = function(ctx)
   ctx = ctx or u.parse.from_line()
   local altwin = fn.win_getid((fn.winnr('#')))
-  if not ctx.filename or not ctx.lnum or altwin == -1 then return '<c-w>gF' end
+  if not ctx.filename or altwin == -1 then return '<c-w>gF' end
   vim.schedule(function()
     local buf = api.nvim_win_get_buf(altwin)
     vim._with({ win = altwin, buf = buf }, function()
       if fn.bufname() ~= ctx.filename then
         if not pcall(vim.cmd.buffer, ctx.filename) then vim.cmd.edit(ctx.filename) end
       end
-      if fn.line('.', altwin) ~= ctx.lnum then fn.cursor(ctx.lnum, 0) end
+      if ctx.lnum and fn.line('.', altwin) ~= ctx.lnum then fn.cursor(ctx.lnum, 0) end
+      vim.cmd('norm! zz')
     end)
+    M.smart_toggle()
   end)
   return '<ignore>'
 end
