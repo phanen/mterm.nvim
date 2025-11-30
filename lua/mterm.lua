@@ -219,7 +219,9 @@ M.gotofile = function(ctx)
       if fn.bufname() ~= ctx.filename then
         if not pcall(vim.cmd.buffer, ctx.filename) then vim.cmd.edit(ctx.filename) end
       end
-      if ctx.lnum and fn.line('.', altwin) ~= ctx.lnum then fn.cursor(ctx.lnum, 0) end
+      if ctx.lnum and fn.line('.', altwin) ~= ctx.lnum then ---@diagnostic disable-next-line: param-type-mismatch
+        fn.cursor(ctx.lnum, tonumber(ctx.col) or 0)
+      end
       vim.cmd('norm! zz')
     end)
     M.smart_toggle()

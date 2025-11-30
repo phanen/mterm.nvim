@@ -4,7 +4,6 @@
     "disable": [
       "unnecessary-if",
       "unnecessary-assert",
-      "missing-fields",
       "access-invisible",
       "unused",
       "duplicate-type"
