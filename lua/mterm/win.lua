@@ -156,7 +156,8 @@ function M:open(buf, focus)
   vim.iter(self.opts.wo or {}):each(function(k, v) --don't use vim.wo[k][0] for compat
     if fn.exists('&' .. k) == 1 then vim.wo[self.win][k] = v end
   end)
-  self.ns_id = api.nvim_create_augroup('u.win._' .. self.win, { clear = true })
+  self._win = self._win or self.win
+  self.ns_id = api.nvim_create_augroup('u.win._' .. self._win, { clear = true })
   api.nvim_create_autocmd('BufReadPost', {
     pattern = 'quickfix',
     group = self.ns_id,

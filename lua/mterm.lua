@@ -28,8 +28,6 @@ local curr = nil
 ---@type win.Win
 M.win = u.class.win({ config = { zindex = 100 } })
 
-M.toggle_layout = function() M.win:toggle_layout() end
-
 M.get_key = function()
   M.i = (M.i or 0) + 1
   return M.i
@@ -44,6 +42,19 @@ local update_title = function()
   then
     return
   end
+  local win = M.win:get_win()
+  if size > 1 and M.win.opts.layout == 'bot' then -- setlocal stl require laststatus~=3
+    vim.wo[win].winbar = vim
+      .iter(slots:pairs())
+      :enumerate()
+      :map(function(id, _key, node)
+        local hl = curr == node and 'TabLineSel' or 'TabLine'
+        return ('%%#%s# %s %%#TabLineFill#'):format(hl, id)
+      end)
+      :join('')
+    return
+  end
+  vim.wo[win].winbar = ''
   local title = vim
     .iter(slots:pairs())
     :enumerate()
@@ -52,7 +63,6 @@ local update_title = function()
       return { (' %s '):format(id), hl }
     end)
     :totable()
-  local win = M.win:get_win()
   if win then pcall(api.nvim_win_set_config, win, { title = title }) end
 end
 
@@ -144,9 +154,15 @@ M.toggle = function(node)
   M.open(node)
 end
 
+M.toggle_layout = function()
+  M.win:toggle_layout()
+  update_title()
+end
+
 M.toggle_focus = function()
   if M.win:is_focused() then
-    vim.cmd.wincmd('p')
+    local win = fn.win_getid(fn.winnr('#'))
+    vim.cmd.wincmd(win ~= 0 and 'p' or 'w')
   elseif M.win:is_open_in_curtab() then
     M.win:focus()
   else
@@ -211,7 +227,7 @@ M.gotofile = function(ctx, focus)
   ctx = ctx or u.parse.from_line()
   local win = vim.bo.filetype ~= 'mterm' and api.nvim_get_current_win()
     or fn.win_getid((fn.winnr('#')))
-  if not ctx.filename or win == -1 then return '<c-w>gF' end
+  if not ctx.filename or win == 0 then return '<c-w>gF' end
   vim.schedule(function()
     local buf = api.nvim_win_get_buf(win)
     local should_focus = focus
@@ -267,8 +283,9 @@ M._attach_linter = function(node)
   local term = node.term
   local buf = assert(term:get_buf())
   local ns = api.nvim_create_namespace('linter.debugprint')
+  if fn.exists('##TermRequest') ~= 1 then return end
   term:on('TermRequest', function(args)
-    if not args.data.sequence:match('^\027]133;A') then return end
+    if not (args.data.sequence or args.data):match('^\027]133;A') then return end
     local prev_prompt, next_prompt = term:get_prompt_range()
     local lines = api.nvim_buf_get_lines(buf, prev_prompt + 1, next_prompt, false)
     ---@type table<integer, vim.Diagnostic.Set[]>
