@@ -149,7 +149,7 @@ function M:open(buf, focus)
   end
 
   if self:is_open() then self:close() end
-
+  if self.opts.layout == 'bot' then vim.cmd('ccl|lcl') end
   ---@cast buf integer
   self.win = api.nvim_open_win(buf, focus, normalize_opts(self.config))
   vim.iter(self.opts.w or {}):each(function(k, v) vim.w[self.win][k] = v end)
@@ -157,6 +157,26 @@ function M:open(buf, focus)
     if fn.exists('&' .. k) == 1 then vim.wo[self.win][k] = v end
   end)
   self.ns_id = api.nvim_create_augroup('u.win._' .. self.win, { clear = true })
+  api.nvim_create_autocmd('BufReadPost', {
+    pattern = 'quickfix',
+    group = self.ns_id,
+    callback = function()
+      if not self:is_open() then return true end
+      if self:is_focused() or not self:is_open_in_curtab() then return end
+      self:close()
+      return true
+    end,
+  })
+  api.nvim_create_autocmd('WinEnter', {
+    group = self.ns_id,
+    callback = function()
+      if not self:is_open() then return true end
+      if self.opts.layout == 'float' and not self:is_focused() and self:is_open_in_curtab() then
+        self:close()
+        return true
+      end
+    end,
+  })
   api.nvim_create_autocmd('VimResized', {
     group = self.ns_id,
     callback = function()
@@ -167,7 +187,9 @@ function M:open(buf, focus)
 end
 
 function M:toggle_layout()
-  self:update(nil, { layout = (self.opts.layout == 'float' and 'bot' or 'float') })
+  local layout = self.opts.layout == 'float' and 'bot' or 'float'
+  if layout == 'bot' then vim.cmd('ccl|lcl') end
+  self:update(nil, { layout = layout })
 end
 
 function M:close()
