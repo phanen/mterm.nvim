@@ -301,6 +301,7 @@ M._attach_linter = function(node)
       local diag = {
         lnum = lnum - 1,
         col = tonumber(parsed.col),
+        end_col = 2147483647, -- v:maxcol
         message = parsed.suffix or '',
         severity = vim.diagnostic.severity.WARN,
       }
