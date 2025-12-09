@@ -229,9 +229,8 @@ M.gotofile = function(ctx, focus)
     or fn.win_getid((fn.winnr('#')))
   if not ctx.filename or win == 0 then return '<c-w>gF' end
   vim.schedule(function()
-    local buf = api.nvim_win_get_buf(win)
     local should_focus = focus
-    vim._with({ win = win, buf = buf }, function()
+    vim._with({ win = win, buf = api.nvim_win_get_buf(win) }, function()
       if vim.fs.abspath(fn.bufname()) ~= vim.fs.abspath(ctx.filename) then
         if not pcall(vim.cmd.buffer, ctx.filename) then vim.cmd.edit(ctx.filename) end
         should_focus = false
