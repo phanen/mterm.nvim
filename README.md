@@ -4,11 +4,19 @@
 * Debugprint highlighting/diagnostics/Navigation.
 
 ```sh
-nvim --clean --cmd 'set rtp^=.'
+nvim --clean --cmd 'set rtp^=.' \
+  +'startinsert' \
+  +'lua require("mterm").smart_toggle()' \
+  +'nnoremap <a-;> <cmd>lua require("mterm").smart_toggle()<cr>' \
+  +'tnoremap <a-;> <cmd>lua require("mterm").smart_toggle()<cr>' \
+  +'tnoremap <a-l> <cmd>lua require("mterm").spawn()<cr>' \
+  +'tnoremap <a-j> <cmd>lua require("mterm").next()<cr>' \
+  +'tnoremap <a-k> <cmd>lua require("mterm").prev()<cr>' \
+  +'tnoremap <a-h> <cmd>lua require("mterm").toggle_layout()<cr>'
 ```
 
 > [!NOTE]
-> Enhancement of terminal mode/cursor: https://github.com/phanen/termmode.nvim.
+> Enhancement of terminal mode/cursor: https://github.com/phanen/tmode.nvim.
 
 ## todo
 * persistent session (will nvim has a better `sessionoptions` for terminal)?

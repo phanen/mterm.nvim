@@ -114,6 +114,7 @@ M.spawn = function(opts)
     end,
     bo = { ft = 'mterm' },
   }
+
   ---@type mterm.Node
   node = {
     key = M.get_key(),
@@ -224,7 +225,7 @@ end
 ---@param ctx? parse.ParseLineResult
 ---@param focus? boolean
 M.gotofile = function(ctx, focus)
-  ctx = ctx or u.parse.from_line()
+  ctx = ctx or u.parse.from_line(nil, false)
   local win = vim.bo.filetype ~= 'mterm' and api.nvim_get_current_win()
     or fn.win_getid((fn.winnr('#')))
   if not ctx.filename or win == 0 then return '<c-w>gF' end
