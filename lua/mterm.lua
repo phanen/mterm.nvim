@@ -223,17 +223,17 @@ local render = function(buf, lnum, ctx)
 end
 
 ---@param ctx? parse.ParseLineResult
----@param focus? boolean
+---@param focus? boolean force force
 M.gotofile = function(ctx, focus)
   ctx = ctx or u.parse.from_line(nil, false)
   local win = vim.bo.filetype ~= 'mterm' and api.nvim_get_current_win()
     or fn.win_getid((fn.winnr('#')))
   if not ctx.filename or win == 0 then return '<c-w>gF' end
   vim.schedule(function()
-    local should_focus = focus
+    local should_focus
     vim._with({ win = win, buf = api.nvim_win_get_buf(win) }, function()
       if vim.fs.abspath(fn.bufname()) ~= vim.fs.abspath(ctx.filename) then
-        if not pcall(vim.cmd.buffer, ctx.filename) then vim.cmd.edit(ctx.filename) end
+        if not pcall(vim.cmd.buffer, ctx.filename) then pcall(vim.cmd.edit, ctx.filename) end
         should_focus = false
       end
       if ctx.lnum and fn.line('.', win) ~= tonumber(ctx.lnum) then ---@diagnostic disable-next-line: param-type-mismatch
@@ -242,7 +242,7 @@ M.gotofile = function(ctx, focus)
       end
       vim.cmd('norm! zz')
     end)
-    if should_focus and vim.bo.filetype == 'mterm' then M.smart_toggle() end
+    if (should_focus ~= false or focus) and vim.bo.filetype == 'mterm' then M.smart_toggle() end
   end)
   return '<ignore>'
 end
