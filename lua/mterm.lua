@@ -13,6 +13,7 @@ local u = {
 
 ---START INJECT ./mterm.lua
 
+local api, fn = vim.api, vim.fn
 local M = {}
 
 ---@class mterm.Node : lru.Node, {}

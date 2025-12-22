@@ -94,17 +94,18 @@ function M:get_win()
   if win ~= -1 then return win end
 end
 
----@param view? vim.fn.winsaveview.ret
+---@param buf integer
 ---@return [integer, integer]
-local termview2pos = function(view)
-  if not view then error('Buffer have no w_cursor (or use tmode.nvim as workaround)') end
+local get_pos = function(buf)
+  local view = vim.b[buf].term_view
+  if not view then return { math.max(1, fn.prevnonblank(api.nvim_buf_line_count(buf))), 0 } end
   return { view.lnum, view.col }
 end
 
 ---@return [integer, integer]
 function M:get_cursor()
   local win = self:get_win()
-  return win and api.nvim_win_get_cursor(win) or termview2pos(vim.b[self.buf].term_view)
+  return win and api.nvim_win_get_cursor(win) or get_pos(assert(self.buf))
 end
 
 ---@param pos [integer, integer]
