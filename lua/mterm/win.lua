@@ -1,11 +1,14 @@
 local fn, api, uv = vim.fn, vim.api, vim.uv
 local u = {
+  with = require('mterm.with'),
   merge = function(...)
     return vim.tbl_deep_extend('force', ...) -- nlua: ignore
   end,
 }
 
 ---START INJECT class/win.lua
+
+local api, fn = vim.api, vim.fn
 
 ---@class win.Cfg: vim.api.keyset.win_config|{}
 ---@field height? number
@@ -47,6 +50,30 @@ local layouts = {
     win = -1,
   },
 }
+
+---@type fun(context: vim.context.mods, f: function): any
+local with = vim._with or u.with
+
+local minimal_wo = {
+  number = true,
+  relativenumber = true,
+  cursorline = true,
+  cursorcolumn = true,
+  spell = true,
+  list = true,
+  signcolumn = true,
+  foldcolumn = true,
+  colorcolumn = true,
+  winhl = true,
+}
+
+local get_wo = function(win)
+  local ret = {}
+  for name, _ in pairs(minimal_wo) do
+    ret[name] = vim.wo[win or 0][name]
+  end
+  return ret
+end
 
 ---@type win.Opts|{}
 local default = {
@@ -91,9 +118,8 @@ end
 ---@param buf integer
 local set_buf = function(win, buf)
   if fn.exists('&winfixbuf') == 1 and vim.wo[win].winfixbuf then
-    vim.wo[win].winfixbuf = false
-    api.nvim_win_set_buf(win, buf)
-    vim.wo[win].winfixbuf = true
+    local wo = vim.tbl_extend('force', get_wo(), { winfixbuf = false })
+    with({ wo = wo }, function() api.nvim_win_set_buf(win, buf) end)
   else
     api.nvim_win_set_buf(win, buf)
   end
