@@ -52,4 +52,58 @@ M.from_line = function(line, only)
   }
 end
 
+local mark ---@type integer?
+local myns = api.nvim_create_namespace('my.nvim.terminal.prompt')
+
+---@param buf integer extmark buf
+---@param lnum integer extmark lnum
+---@param ctx? parse.ParseLineResult
+---@return boolean?
+M.render = function(buf, lnum, ctx)
+  ctx = ctx or M.from_line(api.nvim_buf_get_lines(buf, lnum, lnum + 1, false)[1])
+  if mark then
+    pcall(api.nvim_buf_del_extmark, buf, myns, mark)
+    mark = nil
+  end
+  if not ctx.prefix then return end
+  local opts = {
+    virt_text_pos = 'overlay',
+    virt_text = {
+      { ctx.prefix, 'DiagnosticVirtualTextHint' },
+      { ctx.filename .. ':' .. ctx.lnum, 'DiagnosticVirtualTextInfo' },
+      { ctx.suffix, 'DiagnosticVirtualTextWarn' },
+    },
+  }
+  mark = api.nvim_buf_set_extmark(buf, myns, lnum, 0, opts)
+  return true
+end
+
+local tointeger = tonumber ---@type fun(x: any): integer
+local maxcol = vim.v.maxcol
+
+---@param lines string[]
+---@return table<integer, vim.Diagnostic.Set[]>
+M.diags = function(lines)
+  ---@type table<integer, vim.Diagnostic.Set[]>
+  local bufdiags = {}
+  vim.iter(lines):each(function(line)
+    local parsed = M.from_line(line)
+    local lnum = tointeger(parsed.lnum)
+    if not lnum then return end
+    local buf = parsed.filename and fn.bufadd(parsed.filename) or nil
+    if not buf then return end
+    bufdiags[buf] = bufdiags[buf] or {}
+    ---@type vim.Diagnostic.Set
+    local diag = {
+      lnum = lnum - 1,
+      col = tointeger(parsed.col),
+      end_col = maxcol,
+      message = vim.trim(parsed.suffix or ''),
+      severity = vim.diagnostic.severity.WARN,
+    }
+    table.insert(bufdiags[buf], diag)
+  end)
+  return bufdiags
+end
+
 return M

@@ -151,4 +151,4 @@ local function _with(context, f)
   return callback()
 end
 
-return _with
+return vim._with or _with

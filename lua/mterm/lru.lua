@@ -14,16 +14,13 @@ local fn, api, uv = vim.fn, vim.api, vim.uv
 ---@field head lru.Node
 ---@field size integer
 local M = {}
+M.__index = M
 
----@param nodes? lru.Node[]
 ---@return lru.Lru
-M.new = function(nodes)
+M.new = function()
   local head = {}
-  head.next = head
-  head.prev = head
-  local obj = setmetatable({ hash = {}, head = head, size = 0 }, { __index = M })
-  if nodes then vim.iter(nodes):each(function(node) obj:insert_after(obj.head.prev, node) end) end
-  return obj
+  head.next, head.prev = head, head
+  return setmetatable({ hash = {}, head = head, size = 0 }, M)
 end
 
 ---@param k lru.key
@@ -61,17 +58,19 @@ function M:access(key)
 end
 
 ---@param node lru.Node
+---@param wrap? boolean
 ---@return lru.Node?
-function M:next_of(node)
-  node = node.next
-  return node ~= self.head and node or nil
+function M:next_of(node, wrap)
+  local n = node.next
+  return n ~= self.head and n or (wrap and self:next_of(n) or nil)
 end
 
 ---@param node lru.Node
+---@param wrap? boolean
 ---@return lru.Node?
-function M:prev_of(node)
-  node = node.prev
-  return node ~= self.head and node or nil
+function M:prev_of(node, wrap)
+  local n = node.prev
+  return n ~= self.head and n or (wrap and self:prev_of(n) or nil)
 end
 
 function M:pairs(reverse)

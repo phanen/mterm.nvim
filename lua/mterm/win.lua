@@ -30,6 +30,7 @@ local api, fn = vim.api, vim.fn
 ---@field config win.Cfg last applied config
 ---@field opts win.Opts
 local M = {}
+M.__index = M
 
 ---@type { [win.layout]: win.Cfg }
 local layouts = {
@@ -51,8 +52,7 @@ local layouts = {
   },
 }
 
----@type fun(context: vim.context.mods, f: function): any
-local with = vim._with or u.with
+local with = vim._with or u.with ---@type fun(context: vim.context.mods, f: function): any
 
 local minimal_wo = {
   number = true,
