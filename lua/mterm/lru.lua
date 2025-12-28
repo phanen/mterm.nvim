@@ -1,5 +1,3 @@
-local fn, api, uv = vim.fn, vim.api, vim.uv
-
 ---START INJECT class/lru.lua
 
 ---@alias lru.key any

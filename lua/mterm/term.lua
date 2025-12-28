@@ -1,4 +1,3 @@
-local fn, api, uv = vim.fn, vim.api, vim.uv
 local u = {
   merge = function(...)
     return vim.tbl_deep_extend('force', ...) -- nlua: ignore
@@ -25,6 +24,8 @@ local u = {
 ---@field width? integer
 ---@field b? { [string]: any } buf variable
 ---@field bo? vim.bo|{} buf option
+
+local api, fn, uv = vim.api, vim.fn, vim.uv
 
 ---@type term.Opts|{}
 local defaults = {
@@ -76,7 +77,10 @@ end
 function M:destory() -- buf_del will also stop term job...
   if self.buf and api.nvim_buf_is_valid(self.buf) then
     for _, w in ipairs(fn.win_findbuf(self.buf)) do
-      if api.nvim_win_is_valid(w) then api.nvim_win_close(w, true) end
+      if api.nvim_win_is_valid(w) then
+        local ok, err = pcall(api.nvim_win_close, w, true)
+        if not ok and err and not err:match('E444') then error(err) end
+      end
     end
     api.nvim_buf_delete(self.buf, { force = true })
     pcall(api.nvim_del_augroup_by_name, 'my.term.' .. self.buf)
@@ -131,6 +135,12 @@ end
 ---@return boolean
 function M:is_running()
   return self.buf and fn.jobwait({ vim.bo[self.buf].channel }, 0)[1] == -1 and true or false
+end
+
+function M:redraw()
+  if not self:is_running() then return end
+  local pid = fn.jobpid(vim.bo[self.buf].channel)
+  uv.kill(pid, uv.constants.SIGWINCH)
 end
 
 function M:kill()

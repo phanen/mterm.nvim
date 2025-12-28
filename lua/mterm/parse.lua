@@ -1,4 +1,3 @@
-local fn, api, uv = vim.fn, vim.api, vim.uv
 ---START INJECT parse.lua
 
 local M = {}

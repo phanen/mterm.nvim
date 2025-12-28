@@ -1,4 +1,3 @@
-local fn, api, uv = vim.fn, vim.api, vim.uv
 local u = {
   with = require('mterm.with'),
   merge = function(...)
@@ -22,7 +21,7 @@ local api, fn = vim.api, vim.fn
 ---@field wo vim.wo|{} win option
 ---@field layout win.layout
 
----@alias win.layout "float"|"bot"
+---@alias win.layout "float"|"bot"|"top"|"left"|"right"
 
 ---@class win.Win
 ---@field win? integer
@@ -52,7 +51,28 @@ local layouts = {
     style = 'minimal',
     win = -1,
   },
+  top = {
+    height = 0.5,
+    split = 'above',
+    style = 'minimal',
+    win = -1,
+  },
+  left = {
+    height = 0.5,
+    split = 'left',
+    style = 'minimal',
+    win = -1,
+  },
+  right = {
+    height = 0.5,
+    split = 'right',
+    style = 'minimal',
+    win = -1,
+  },
 }
+
+local pref = true and 'top' or 'bot'
+M.pref = pref
 
 local with = vim._with or u.with ---@type fun(context: vim.context.mods, f: function): any
 
@@ -150,10 +170,15 @@ end
 ---@return_cast self.buf integer
 function M:in_tabpage()
   local win = self:valid()
-  return win and api.nvim_get_current_tabpage() == api.nvim_win_get_tabpage(win)
+  return win and api.nvim_get_current_tabpage() == api.nvim_win_get_tabpage(win) or false
 end
 
 function M:focus() return self.win and api.nvim_set_current_win(self.win) or nil end
+
+local win_set_config = function(win, config)
+  if api.nvim_win_get_config(win).relative == '' then config.win = nil end
+  api.nvim_win_set_config(win, config)
+end
 
 ---@param buf? integer
 ---@param opts? win.Opts|{}
@@ -163,7 +188,7 @@ function M:update(buf, opts)
   local win = self:valid()
   if not win then return end
   if buf then self:set_buf(buf) end
-  api.nvim_win_set_config(win, normalize_opts(self.config))
+  win_set_config(win, normalize_opts(self.config))
 end
 
 function M:set_buf(buf) set_buf(self:assert_win(), buf) end
@@ -187,7 +212,7 @@ function M:open(buf, focus)
     self:close()
   end
 
-  if self.opts.layout == 'bot' then vim.cmd('ccl|lcl') end
+  if self.opts.layout ~= 'float' then vim.cmd('ccl|lcl') end
   self.win = api.nvim_open_win(buf, focus, normalize_opts(self.config))
   vim.iter(self.opts.w or {}):each(function(k, v) vim.w[self.win][k] = v end)
   vim.iter(self.opts.wo or {}):each(function(k, v) --don't use vim.wo[k][0] for compat
@@ -225,8 +250,8 @@ function M:open(buf, focus)
 end
 
 function M:toggle_layout()
-  local layout = self.opts.layout == 'float' and 'bot' or 'float'
-  if layout == 'bot' then vim.cmd('ccl|lcl') end
+  local layout = self.opts.layout == 'float' and pref or 'float'
+  if layout ~= 'float' then vim.cmd('ccl|lcl') end
   self:update(nil, { layout = layout })
 end
 
@@ -236,6 +261,18 @@ function M:close()
   if self.ns_id then api.nvim_del_augroup_by_id(self.ns_id) end
   self.win = nil
   self.ns_id = nil
+end
+
+---@return boolean
+function M:try_close()
+  local in_tab = self:in_tabpage()
+  self:close()
+  return in_tab
+end
+
+function M:toggle(buf, focus)
+  if self:close() then return end
+  self:open(buf, focus)
 end
 
 return M

@@ -66,7 +66,7 @@ end
 local update_title = function()
   if M.size() == 0 or not M.win:valid() then return end -- last buf bdeleted
   local win = assert(M.win:get_win())
-  if M.size() ~= 1 and M.win.opts.layout == 'bot' then -- setlocal stl require laststatus~=3
+  if M.size() ~= 1 and M.win.opts.layout ~= 'float' then -- setlocal stl require laststatus~=3
     vim.wo[win].winbar = build_winbar()
   else
     vim.wo[win].winbar = ''
@@ -155,18 +155,14 @@ M.open = function(term, focus, opts)
   update_title()
 end
 
----@return boolean?
-M.close = function()
-  if M.win:valid() then
-    M.win:close()
-    return true
-  end
-end
+M.close = function() M.win:close() end
 
 ---@param term? mterm.Term
-M.toggle = function(term)
-  if (not term or term == curr) and M.close() then return end
-  M.open(term)
+---@param focus? boolean default true
+M.toggle = function(term, focus)
+  term = term or curr
+  if term == curr and M.win:try_close() then return end
+  M.open(term, focus) -- not open/reopen in curtab/term change buf
 end
 
 M.toggle_layout = function()
