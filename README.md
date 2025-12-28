@@ -10,6 +10,13 @@ bash .run.sh
 > [!NOTE]
 > Enhancement of terminal mode/cursor: https://github.com/phanen/tmode.nvim.
 
+## opencode provider
+
+```lua
+package.preload['opencode.provider.mterm'] = function() return require('mterm').opencode() end
+vim.g.opencode_opts = { provider = { mterm = {}, enabled = 'mterm' } }
+```
+
 ## todo
 * persistent session (will nvim has a better `sessionoptions` for terminal)?
 * make 'efm' work with term buffer via osc133, term should work like qf
