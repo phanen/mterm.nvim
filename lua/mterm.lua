@@ -1,5 +1,5 @@
-local fn, api, uv = vim.fn, vim.api, vim.uv
 local u = {
+  with = require('mterm.with'),
   class = {
     lru = require('mterm.lru').new,
     term = require('mterm.term').new,
@@ -16,144 +16,157 @@ local u = {
 local api, fn = vim.api, vim.fn
 local M = {}
 
----@class mterm.Node : lru.Node, {}
----@field term term.Term
+---@class mterm.Term :lru.Node, term.Term
 
----@class mterm.Slots : lru.Lru, {}
----@field hash table<lru.key, mterm.Node>
-local slots = u.class.lru {}
+local with = vim._with or u.with ---@type fun(context: vim.context.mods, f: function): any
 
----@type mterm.Node?
-local curr = nil
+---@class mterm.Slots :lru.Lru
+---@field hash table<lru.key, mterm.Term>
+---@field head mterm.Term
+local slots = u.class.lru()
+
+---@type mterm.Term?
+local curr
+
+M.curr = curr
 
 ---@type win.Win
 M.win = u.class.win({ config = { zindex = 100 } })
 
-M.get_key = function()
+M.size = function() return slots.size end
+
+local uuid = function()
   M.i = (M.i or 0) + 1
   return M.i
 end
 
-M.is_empty = function() return not curr end
-
-local update_title = function()
-  local size = slots.size
-  if
-    not M.win:is_open() or size == 0 -- last buf bdeleted
-  then
-    return
-  end
-  local win = M.win:get_win()
-  if size > 1 and M.win.opts.layout == 'bot' then -- setlocal stl require laststatus~=3
-    vim.wo[win].winbar = vim
-      .iter(slots:pairs())
-      :enumerate()
-      :map(function(id, _key, node)
-        local hl = curr == node and 'TabLineSel' or 'TabLine'
-        return ('%%#%s# %s %%#TabLineFill#'):format(hl, id)
-      end)
-      :join('')
-    return
-  end
-  vim.wo[win].winbar = ''
-  local title = vim
+local build_winbar = function()
+  return vim
     .iter(slots:pairs())
     :enumerate()
-    :map(function(id, _key, node)
-      local hl = curr == node and 'TabLineSel' or 'TabLine'
+    :map(function(id, _key, term)
+      local hl = curr == term and 'TabLineSel' or 'TabLine'
+      return ('%%#%s# %s %%#TabLineFill#'):format(hl, id)
+    end)
+    :join('')
+end
+
+---@return [string, string][]
+local build_title = function()
+  return vim
+    .iter(slots:pairs())
+    :enumerate()
+    :map(function(id, _key, term)
+      local hl = curr == term and 'TabLineSel' or 'TabLine'
       return { (' %s '):format(id), hl }
     end)
     :totable()
-  if win then pcall(api.nvim_win_set_config, win, { title = title }) end
 end
 
----@param node mterm.Node
-local switch_to = function(node)
-  curr = node
-  if not M.win:is_open() then return end
-  local buf = node.term:get_buf()
-  M.win:set_buf(buf)
-  update_title() -- why we need it here?
+local update_title = function()
+  if M.size() == 0 or not M.win:valid() then return end -- last buf bdeleted
+  local win = assert(M.win:get_win())
+  if M.size() ~= 1 and M.win.opts.layout == 'bot' then -- setlocal stl require laststatus~=3
+    vim.wo[win].winbar = build_winbar()
+  else
+    vim.wo[win].winbar = ''
+    pcall(api.nvim_win_set_config, win, { title = build_title() }) -- no border+ <11
+  end
 end
 
----@param node? mterm.Node
-M.next = function(node)
-  node = node or assert(curr)
-  local node0 = slots:next_of(node)
-  if not node0 then node0 = slots.head.next end
-  if node0 == node then return end
-  switch_to(node0)
+---@param opts term.Opts|{}
+---@param key integer|string
+---@return mterm.Term
+local Term = function(opts, key)
+  local term = u.class.term(opts) ---@type mterm.Term
+  term.key = key
+  slots:insert_after(curr or slots.head, term)
+  term:spawn()
+  term:on('CursorMoved', function(args) u.parse.render(args.buf, fn.line('.') - 1) end)
+  term:on('TermRequest', function(args)
+    if not (args.data.sequence or args.data):match('^\027]133;A') then return end
+    local ns = api.nvim_create_namespace('linter.debugprint')
+    local prev_prompt, next_prompt = term:get_prompt_range()
+    local buf = assert(term:get_buf())
+    local lines = api.nvim_buf_get_lines(buf, prev_prompt + 1, next_prompt, false)
+    local bufdiags = u.parse.diags(lines)
+    for diagbuf, diags in pairs(bufdiags) do
+      vim.diagnostic.set(ns, diagbuf, diags)
+    end
+  end)
+  return term
 end
 
----@param node? mterm.Node
-M.prev = function(node)
-  node = node or assert(curr)
-  local node0 = slots:prev_of(node)
-  if not node0 then node0 = slots.head.prev end
-  if node0 == curr then return end
-  switch_to(node0)
+---@param term? mterm.Term
+M.switch = function(term)
+  if curr == term then return update_title() end
+  curr = term
+  if not M.win:valid() then return update_title() end -- when `:quit!`, win is not valid
+  if not term then return update_title() end -- delete to empty
+  M.win:set_buf(term:get_buf())
+  update_title()
 end
 
----@param opts? term.Opts
----@return mterm.Node
+---@param term? mterm.Term
+M.next = function(term)
+  term = term or curr
+  if not term then return end
+  M.switch(assert(slots:next_of(term, true)))
+end
+
+---@param term? mterm.Term
+M.prev = function(term)
+  term = term or curr
+  if not term then return end
+  M.switch(assert(slots:prev_of(term, true)))
+end
+
+---@param opts? term.Opts|{}
+---@return mterm.Term
 M.spawn = function(opts)
+  local term ---@type mterm.Term
   opts = opts or {}
-  local node ---@type mterm.Node
-  local default = {
+  local on_exit = opts.on_exit
+  opts = u.merge(opts, {
     width = M.win:get_config().width,
-    height = assert(M.win:get_config().height) - (slots.size > 1 and 1 or 0),
+    height = assert(M.win:get_config().height) - (M.size() > 1 and 1 or 0),
     on_exit = function(...)
-      local near_node = slots:next_of(node) or slots:prev_of(node)
-      if opts.on_exit then opts.on_exit(...) end
-      slots:delete(node)
-      if near_node then
-        switch_to(near_node)
-      else
-      end
-      curr = near_node
-      update_title()
+      local neighbor = slots:next_of(term) or slots:prev_of(term)
+      if on_exit then on_exit(...) end
+      slots:delete(term)
+      M.switch(neighbor)
     end,
     bo = { ft = 'mterm' },
-  }
-
-  ---@type mterm.Node
-  node = {
-    key = M.get_key(),
-    term = u.class.term(u.merge(opts, default)),
-  }
-  slots:insert_after(curr or slots.head, node)
-  curr = curr or node
+  })
+  term = Term(opts, uuid())
+  curr = curr or term
   update_title()
-  node.term:spawn()
-  M._attach_render(node)
-  M._attach_linter(node)
-  return node
+  return term
 end
 
----@param node? mterm.Node
+---@param term? mterm.Term
 ---@param focus? boolean
 ---@param opts? win.Opts|{}
-M.open = function(node, focus, opts)
-  ---@type mterm.Node
-  node = node or curr or M.spawn()
+M.open = function(term, focus, opts)
+  term = term or curr or M.spawn()
   M.win:update(nil, opts)
-  M.win:open(node.term:get_buf(), focus)
-  curr = node
+  M.win:open(assert(term:get_buf()), focus)
+  M.switch(term)
   update_title()
 end
 
 ---@return boolean?
 M.close = function()
-  if M.win:is_open_in_curtab() then
+  if M.win:valid() then
     M.win:close()
     return true
   end
 end
 
----@param node? mterm.Node
-M.toggle = function(node)
-  if M.close() then return end
-  M.open(node)
+---@param term? mterm.Term
+M.toggle = function(term)
+  if (not term or term == curr) and M.close() then return end
+  M.open(term)
 end
 
 M.toggle_layout = function()
@@ -161,66 +174,41 @@ M.toggle_layout = function()
   update_title()
 end
 
-M.toggle_focus = function()
-  if M.win:is_focused() then
+---@param term? mterm.Term
+M.toggle_focus = function(term)
+  local buf = term and term:get_buf() or nil
+  if M.win:focused(buf) then
     local win = fn.win_getid(fn.winnr('#'))
     vim.cmd.wincmd(win ~= 0 and 'p' or 'w')
-  elseif M.win:is_open_in_curtab() then
-    M.win:focus()
   else
-    M.open()
+    M.open(term)
   end
 end
 
-M.smart_toggle = function()
+---@param term? mterm.Term
+M.toggle_or_focus = function(term)
   if M.win.opts.layout ~= 'float' then
-    M.toggle_focus()
+    M.toggle_focus(term)
   else
-    M.toggle()
+    M.toggle(term)
   end
 end
 
 ---@param cmd string
----@param node? mterm.Node
-M.send = function(cmd, node)
-  node = node or curr or M.spawn()
-  vim.defer_fn(function() node.term:send(cmd) end, 100)
+---@param term? mterm.Term
+M.send = function(cmd, term)
+  term = term or curr or M.spawn()
+  vim.defer_fn(function() term:send(cmd) end, 100)
 end
 
 ---@param key string
----@param node? mterm.Node
-M.send_key = function(key, node)
-  node = node or curr or M.spawn()
-  local win = M.win.win
+---@param term? mterm.Term
+M.send_key = function(key, term)
+  term = term or curr or M.spawn()
+  local win = M.win:get_win()
   if not win then return end
-  api.nvim_win_call(win, function() vim.cmd.norm(vim.keycode(key)) end)
-  node.term:set_cursor(api.nvim_win_get_cursor(win))
-end
-
-local mark ---@type integer?
-local myns = api.nvim_create_namespace('my.nvim.terminal.prompt')
-
----@param buf integer extmark buf
----@param lnum integer extmark lnum
----@param ctx? parse.ParseLineResult
----@return boolean?
-local render = function(buf, lnum, ctx)
-  ctx = ctx or u.parse.from_line(api.nvim_buf_get_lines(buf, lnum, lnum + 1, false)[1])
-  if mark then
-    pcall(api.nvim_buf_del_extmark, buf, myns, mark)
-    mark = nil
-  end
-  if not ctx.prefix then return end
-  local opts = {
-    virt_text_pos = 'overlay',
-    virt_text = {
-      { ctx.prefix, 'DiagnosticVirtualTextHint' },
-      { ctx.filename .. ':' .. ctx.lnum, 'DiagnosticVirtualTextInfo' },
-      { ctx.suffix, 'DiagnosticVirtualTextWarn' },
-    },
-  }
-  mark = api.nvim_buf_set_extmark(buf, myns, lnum, 0, opts)
-  return true
+  with({ win = win, noautocmd = true }, function() vim.cmd.norm(vim.keycode(key)) end)
+  term:set_cursor(api.nvim_win_get_cursor(win))
 end
 
 ---@param ctx? parse.ParseLineResult
@@ -232,7 +220,7 @@ M.gotofile = function(ctx, focus)
   if not ctx.filename or win == 0 then return '<c-w>gF' end
   vim.schedule(function()
     local should_focus
-    vim._with({ win = win, buf = api.nvim_win_get_buf(win) }, function()
+    with({ win = win, buf = api.nvim_win_get_buf(win) }, function()
       if vim.fs.abspath(fn.bufname()) ~= vim.fs.abspath(ctx.filename) then
         if not pcall(vim.cmd.buffer, ctx.filename) then pcall(vim.cmd.edit, ctx.filename) end
         should_focus = false
@@ -243,75 +231,61 @@ M.gotofile = function(ctx, focus)
       end
       vim.cmd('norm! zz')
     end)
-    if (should_focus ~= false or focus) and vim.bo.filetype == 'mterm' then M.smart_toggle() end
+    if (should_focus ~= false or focus) and vim.bo.filetype == 'mterm' then M.toggle_or_focus() end
   end)
   return '<ignore>'
 end
 
----@param node? mterm.Node
-M.next_dp = function(node)
-  local term = (node or assert(curr)).term
+---@param term? mterm.Term
+M.next_dp = function(term)
+  term = term or assert(curr)
   local buf = assert(term:get_buf())
   term:next_dp(function(line, lnum)
     local ctx = u.parse.from_line(line)
-    if render(buf, lnum - 1, ctx) then
-      M.gotofile(ctx)
-      return true
-    end
+    if not u.parse.render(buf, lnum - 1, ctx) then return end
+    M.gotofile(ctx)
+    return true
   end)
 end
 
----@param node? mterm.Node
-M.prev_dp = function(node)
-  local term = (node or assert(curr)).term
+---@param term? mterm.Term
+M.prev_dp = function(term)
+  term = term or assert(curr)
   local buf = assert(term:get_buf())
   term:prev_dp(function(line, lnum)
     local ctx = u.parse.from_line(line)
-    if render(buf, lnum - 1, ctx) then
-      M.gotofile(ctx)
-      return true
-    end
+    if not u.parse.render(buf, lnum - 1, ctx) then return end
+    M.gotofile(ctx)
+    return true
   end)
 end
 
----@param node mterm.Node
-M._attach_render = function(node)
-  node.term:on('CursorMoved', function(args) render(args.buf, fn.line('.') - 1) end)
-end
-
----@param node mterm.Node
-M._attach_linter = function(node)
-  local term = node.term
-  local buf = assert(term:get_buf())
-  local ns = api.nvim_create_namespace('linter.debugprint')
-  if fn.exists('##TermRequest') ~= 1 then return end
-  term:on('TermRequest', function(args)
-    if not (args.data.sequence or args.data):match('^\027]133;A') then return end
-    local prev_prompt, next_prompt = term:get_prompt_range()
-    local lines = api.nvim_buf_get_lines(buf, prev_prompt + 1, next_prompt, false)
-    ---@type table<integer, vim.Diagnostic.Set[]>
-    local dmap = {}
-    vim.iter(lines):each(function(line)
-      local parsed = u.parse.from_line(line)
-      local lnum = tonumber(parsed.lnum)
-      if not lnum then return end
-      local dbuf = parsed.filename and fn.bufadd(parsed.filename) or nil
-      if not dbuf then return end
-      dmap[dbuf] = dmap[dbuf] or {}
-      ---@type vim.Diagnostic.Set
-      local diag = {
-        lnum = lnum - 1,
-        col = tonumber(parsed.col),
-        end_col = 2147483647, -- v:maxcol
-        message = parsed.suffix or '',
-        severity = vim.diagnostic.severity.WARN,
-      }
-      table.insert(dmap[dbuf], diag)
-    end)
-    for dbuf, diags in pairs(dmap) do
-      vim.diagnostic.set(ns, dbuf, diags)
-    end
-  end)
+M.opencode = function()
+  ---@mod 'opencode'
+  ---@class opencode.provider.Mterm : opencode.Provider
+  ---@field opts term.Opts
+  ---@field term mterm.Term
+  local O = {}
+  O.__index = O
+  O.name = 'mterm' ---@diagnostic disable
+  ---@class opencode.provider.mterm.Opts : term.Opts
+  ---@param opts? opencode.provider.mterm.Opts
+  ---@return opencode.provider.Mterm
+  function O.new(opts) return setmetatable({ opts = opts or {} }, O) end
+  function O.health() return true end
+  function O:_get()
+    local opts = u.merge(self.opts, { cmd = { 'sh', '-c', self.cmd }, auto_close = true })
+    self.term = self.term and self.term:is_running() and self.term or M.spawn(opts)
+    return self.term
+  end
+  function O:toggle() M.toggle_or_focus(self:_get()) end
+  function O:start() M.open(self:_get()) end
+  function O:stop()
+    if not self.term then return end
+    self.term:kill()
+    self.term = nil
+  end ---@diagnostic enable
+  return O
 end
 
 return M

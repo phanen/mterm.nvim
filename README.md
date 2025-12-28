@@ -4,15 +4,7 @@
 * Debugprint highlighting/diagnostics/Navigation.
 
 ```sh
-nvim --clean --cmd 'set rtp^=.' \
-  +'startinsert' \
-  +'lua require("mterm").smart_toggle()' \
-  +'nnoremap <a-;> <cmd>lua require("mterm").smart_toggle()<cr>' \
-  +'tnoremap <a-;> <cmd>lua require("mterm").smart_toggle()<cr>' \
-  +'tnoremap <a-l> <cmd>lua require("mterm").spawn()<cr>' \
-  +'tnoremap <a-j> <cmd>lua require("mterm").next()<cr>' \
-  +'tnoremap <a-k> <cmd>lua require("mterm").prev()<cr>' \
-  +'tnoremap <a-h> <cmd>lua require("mterm").toggle_layout()<cr>'
+bash .run.sh
 ```
 
 > [!NOTE]

@@ -16,7 +16,7 @@ local validate = function(name, val, expected_type, optional)
 end
 
 ---@param context vim.context.mods
----@return vim.api.keyset.cmd.mods?
+---@return vim.api.keyset.cmd.mods
 local build_cmd_mods = function(context)
   local mods = {}
   if context.silent ~= nil then mods.silent = context.silent end
@@ -29,6 +29,7 @@ local build_cmd_mods = function(context)
   if context.keeppatterns ~= nil then mods.keeppatterns = context.keeppatterns end
   if context.lockmarks ~= nil then mods.lockmarks = context.lockmarks end
   if context.noautocmd ~= nil then mods.noautocmd = context.noautocmd end
+  ---@diagnostic disable-next-line: return-type-mismatch
   return next(mods) and mods or nil
 end
 
@@ -151,4 +152,4 @@ local function _with(context, f)
   return callback()
 end
 
-return _with
+return vim._with or _with

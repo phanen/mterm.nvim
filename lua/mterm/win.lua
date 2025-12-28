@@ -30,6 +30,9 @@ local api, fn = vim.api, vim.fn
 ---@field config win.Cfg last applied config
 ---@field opts win.Opts
 local M = {}
+M.__index = M
+
+local asinteger = tonumber ---@type fun(x: any): integer
 
 ---@type { [win.layout]: win.Cfg }
 local layouts = {
@@ -51,8 +54,7 @@ local layouts = {
   },
 }
 
----@type fun(context: vim.context.mods, f: function): any
-local with = vim._with or u.with
+local with = vim._with or u.with ---@type fun(context: vim.context.mods, f: function): any
 
 local minimal_wo = {
   number = true,
@@ -89,15 +91,16 @@ local default = {
 ---@return vim.api.keyset.win_config
 local normalize_opts = function(opts)
   local _col, _row = vim.o.columns, vim.o.lines
-  local width = opts.width and opts.width < 1 and math.ceil(_col * opts.width) or opts.width
-  local height = opts.height and opts.height < 1 and math.ceil(_row * opts.height - 4)
-    or opts.height -- maybe tabline/statusline
+  local height, width = opts.height, opts.width
+  width = width and width < 1 and math.ceil(_col * width) or asinteger(width)
+  height = height and height < 1 and math.ceil(_row * height - 4) or asinteger(height) -- maybe tabline/statusline
   local col = opts.col and opts.col < 1 and math.ceil((_col - width) * opts.col) or opts.col
   local row = opts.row and opts.row < 1 and math.ceil((_row - height) * opts.row - 1) or opts.row
+  ---@diagnostic disable-next-line: return-type-mismatch
   return u.merge(opts, { width = width, height = height, col = col, row = row })
 end
 
----@param opts win.Cfg
+---@param opts win.Cfg|{}
 ---@param layout win.layout
 ---@return win.Cfg
 local normalize_layout = function(opts, layout)
@@ -117,18 +120,15 @@ end
 ---@param win integer
 ---@param buf integer
 local set_buf = function(win, buf)
-  if fn.exists('&winfixbuf') == 1 and vim.wo[win].winfixbuf then
-    local wo = vim.tbl_extend('force', get_wo(), { winfixbuf = false })
-    with({ wo = wo }, function() api.nvim_win_set_buf(win, buf) end)
-  else
-    api.nvim_win_set_buf(win, buf)
-  end
+  local wo = get_wo(win)
+  if fn.exists('&winfixbuf') == 1 and vim.wo[win].winfixbuf then wo.winfixbuf = false end
+  with({ win = win, wo = wo }, function() api.nvim_win_set_buf(win, buf) end)
 end
 
 ---@param opts? win.Opts|{}
 ---@return win.Win
 M.new = function(opts)
-  opts = u.merge(default, opts or {})
+  opts = u.merge(default, opts or {}) ---@type win.Opts
   return setmetatable({
     opts = opts,
     config = normalize_layout(opts.config, opts.layout),
@@ -136,47 +136,58 @@ M.new = function(opts)
   }, { __index = M })
 end
 
-function M:is_open() return self.win and api.nvim_win_is_valid(self.win) end
+---@return integer?
+function M:valid() return self.win and api.nvim_win_is_valid(self.win) and self.win or nil end
 
-function M:is_focused() return self.win == api.nvim_get_current_win() end
+---@return integer
+function M:assert_win() return assert(self:valid()) end
 
-function M:is_open_in_curtab()
-  return self:is_open() and api.nvim_get_current_tabpage() == api.nvim_win_get_tabpage(self.win)
+---@param buf? integer
+function M:focused(buf)
+  return self.win == api.nvim_get_current_win() and (not buf or self:get_buf() == buf)
 end
 
-function M:focus() return api.nvim_set_current_win(self.win) end
+---@return_cast self.buf integer
+function M:in_tabpage()
+  local win = self:valid()
+  return win and api.nvim_get_current_tabpage() == api.nvim_win_get_tabpage(win)
+end
+
+function M:focus() return self.win and api.nvim_set_current_win(self.win) or nil end
 
 ---@param buf? integer
 ---@param opts? win.Opts|{}
 function M:update(buf, opts)
   if opts then self.opts = u.merge(self.opts, opts) end
   self.config = normalize_layout(self.opts.config, self.opts.layout)
-  if not self:is_open() then return end
+  local win = self:valid()
+  if not win then return end
   if buf then self:set_buf(buf) end
-  api.nvim_win_set_config(self.win, normalize_opts(self.config))
+  api.nvim_win_set_config(win, normalize_opts(self.config))
 end
 
-function M:set_buf(buf) set_buf(self.win, buf) end
+function M:set_buf(buf) set_buf(self:assert_win(), buf) end
 
-function M:get_buf() return api.nvim_win_get_buf(self.win) end
+function M:get_buf() return api.nvim_win_get_buf(self:assert_win()) end
 
 function M:get_win() return self.win end
 
 ---@return vim.api.keyset.win_config
 function M:get_config() return normalize_opts(self.config) end
 
----@param buf? integer
+---@param buf integer
 ---@param focus? boolean
 function M:open(buf, focus)
   focus = focus == nil or focus
-  if self:is_open_in_curtab() then
+  if self:in_tabpage() then
     self:update(buf)
+    if focus then self:focus() end
     return
+  elseif self:valid() then -- open in other tabpage
+    self:close()
   end
 
-  if self:is_open() then self:close() end
   if self.opts.layout == 'bot' then vim.cmd('ccl|lcl') end
-  ---@cast buf integer
   self.win = api.nvim_open_win(buf, focus, normalize_opts(self.config))
   vim.iter(self.opts.w or {}):each(function(k, v) vim.w[self.win][k] = v end)
   vim.iter(self.opts.wo or {}):each(function(k, v) --don't use vim.wo[k][0] for compat
@@ -188,8 +199,8 @@ function M:open(buf, focus)
     pattern = 'quickfix',
     group = self.ns_id,
     callback = function()
-      if not self:is_open() then return true end
-      if self:is_focused() or not self:is_open_in_curtab() then return end
+      if not self:valid() then return true end
+      if self:focused() or not self:in_tabpage() then return end
       self:close()
       return true
     end,
@@ -197,8 +208,8 @@ function M:open(buf, focus)
   api.nvim_create_autocmd('WinEnter', {
     group = self.ns_id,
     callback = function()
-      if not self:is_open() then return true end
-      if self.opts.layout == 'float' and not self:is_focused() and self:is_open_in_curtab() then
+      if not self:valid() then return true end
+      if self.opts.layout == 'float' and not self:focused() and self:in_tabpage() then
         self:close()
         return true
       end
@@ -207,7 +218,7 @@ function M:open(buf, focus)
   api.nvim_create_autocmd('VimResized', {
     group = self.ns_id,
     callback = function()
-      if not self:is_open() then return true end
+      if not self:valid() then return true end
       api.nvim_win_set_config(self.win, normalize_opts(self.config))
     end,
   })
@@ -220,7 +231,8 @@ function M:toggle_layout()
 end
 
 function M:close()
-  if self:is_open() then api.nvim_win_close(self.win, true) end
+  local win = self:valid()
+  if win then api.nvim_win_close(win, true) end
   if self.ns_id then api.nvim_del_augroup_by_id(self.ns_id) end
   self.win = nil
   self.ns_id = nil

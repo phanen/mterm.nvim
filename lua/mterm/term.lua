@@ -26,7 +26,7 @@ local u = {
 ---@field b? { [string]: any } buf variable
 ---@field bo? vim.bo|{} buf option
 
----@type term.Opts
+---@type term.Opts|{}
 local defaults = {
   cmd = {
     _G.is_win and fn.executable('pwsh') == 1 and 'pwsh'
@@ -38,18 +38,17 @@ local defaults = {
 
 ---@class term.Term
 local M = {}
+M.__index = M
 
----@param opts? term.Opts
+---@param opts? term.Opts|{}
 ---@return term.Term
 M.new = function(opts)
   opts = u.merge(defaults, opts or {})
-  return setmetatable({
-    opts = opts,
-  }, { __index = M })
+  return setmetatable({ opts = opts }, { __index = M })
 end
 
 ---@diagnostic disable-next-line: deprecated
-local jobstart = fn.has('nvim-0.11') == 1 and fn.jobstart or fn.termopen
+local jobstart = fn.has('nvim-0.12') == 1 and fn.jobstart or fn.termopen
 
 function M:spawn()
   local opts = self.opts
@@ -119,6 +118,9 @@ end
 ---@param event vim.api.keyset.events|vim.api.keyset.events[]
 ---@param cb function
 function M:on(event, cb)
+  event = type(event) == 'string' and { event } or event ---@type vim.api.keyset.events[]
+  event = vim.tbl_filter(function(e) return fn.exists('##' .. e) == 1 end, event)
+  if #event == 0 then return end
   return api.nvim_create_autocmd(event, {
     buffer = self.buf,
     group = api.nvim_create_augroup('my.term.' .. self.buf, { clear = false }),
@@ -129,6 +131,11 @@ end
 ---@return boolean
 function M:is_running()
   return self.buf and fn.jobwait({ vim.bo[self.buf].channel }, 0)[1] == -1 and true or false
+end
+
+function M:kill()
+  if not self:is_running() then return end
+  fn.jobstop(vim.bo[self.buf].channel)
 end
 
 ---@param cmd string
@@ -185,13 +192,15 @@ function M:get_prompt_range()
   return prev_prompt[1], next_prompt[1]
 end
 
+---@param cb fun(line?: string, lnum: integer): boolean?
+---@param wrap boolean?
+---@param direction integer
 function M:_dp_impl(cb, wrap, direction)
   local prev_prompt, next_prompt = self:get_prompt_range()
   local buf = assert(self:get_buf())
   local lnum = (unpack(self:get_cursor()))
   lnum = math.min((math.max(lnum, prev_prompt)), next_prompt)
   wrap = wrap ~= false
-
   local total_lines = next_prompt - prev_prompt + 1
   local searched = 0
   while searched < total_lines do
@@ -212,8 +221,12 @@ function M:_dp_impl(cb, wrap, direction)
   end
 end
 
+---@param cb fun(line?: string, lnum: integer): boolean?
+---@param wrap boolean?
 function M:next_dp(cb, wrap) self:_dp_impl(cb, wrap, 1) end
 
+---@param cb fun(line?: string, lnum: integer): boolean?
+---@param wrap boolean?
 function M:prev_dp(cb, wrap) self:_dp_impl(cb, wrap, -1) end
 
 return M
