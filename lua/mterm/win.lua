@@ -58,20 +58,20 @@ local layouts = {
     win = -1,
   },
   left = {
-    height = 0.5,
+    width = 0.4,
     split = 'left',
     style = 'minimal',
     win = -1,
   },
   right = {
-    height = 0.5,
+    width = 0.4,
     split = 'right',
     style = 'minimal',
     win = -1,
   },
 }
 
-local pref = true and 'top' or 'bot'
+local pref = true and 'right' or 'left'
 M.pref = pref
 
 local with = vim._with or u.with ---@type fun(context: vim.context.mods, f: function): any

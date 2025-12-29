@@ -127,9 +127,10 @@ M.spawn = function(opts)
   local term ---@type mterm.Term
   opts = opts or {}
   local on_exit = opts.on_exit
+  local config = M.win:get_config()
   opts = u.merge(opts, {
-    width = M.win:get_config().width,
-    height = assert(M.win:get_config().height) - (M.size() > 1 and 1 or 0),
+    width = config.width,
+    height = config.height and (config.height - (M.size() > 1 and 1 or 0)) or nil,
     on_exit = function(...)
       local neighbor = slots:next_of(term) or slots:prev_of(term)
       if on_exit then on_exit(...) end
