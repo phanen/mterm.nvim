@@ -17,6 +17,10 @@ local api, fn = vim.api, vim.fn
 local M = {}
 
 ---@class mterm.Term :lru.Node, term.Term
+---@field spawn function
+---@field on_exit function
+---@field kill function
+---@field _exiting? boolean
 
 local with = vim._with or u.with ---@type fun(context: vim.context.mods, f: function): any
 
@@ -28,7 +32,7 @@ local slots = u.class.lru()
 ---@type mterm.Term?
 local curr
 
-M.curr = curr
+M.curr = function() return curr end
 
 ---@type win.Win
 M.win = u.class.win({ config = { zindex = 100 } })
@@ -76,11 +80,19 @@ end
 
 ---@param opts term.Opts|{}
 ---@param key integer|string
+---@param fake? boolean
 ---@return mterm.Term
-local Term = function(opts, key)
+local Term = function(opts, key, fake)
+  if slots:get(key) then error('duplicated key: ' .. key) end
   local term = u.class.term(opts) ---@type mterm.Term
+  function term:on_exit()
+    local neighbor = slots:next_of(self) or slots:prev_of(self)
+    slots:delete(self)
+    M.switch(neighbor)
+  end
   term.key = key
   slots:insert_after(curr or slots.head, term)
+  if fake then return term end
   term:spawn()
   term:on('CursorMoved', function(args) u.parse.render(args.buf, fn.line('.') - 1) end)
   term:on('TermRequest', function(args)
@@ -97,12 +109,37 @@ local Term = function(opts, key)
   return term
 end
 
+---@param buf? integer
+---@param key integer|string
+---@return mterm.Term
+local Faketerm = function(buf, key)
+  buf = (not buf or buf == 0) and api.nvim_get_current_buf() or buf
+  local term = Term({}, key, true)
+  term.buf = buf
+  with({ buf = buf }, function() vim.cmd([[runtime! ftplugin/mterm.lua]]) end) -- need window-local map
+  function term:spawn() error('wrong', vim.inspect(self)) end
+  function term:is_running() return not self._exiting end
+  local orig = term.on_exit
+  local on_exit = function(self)
+    if self._exiting then return end
+    self._exiting = true
+    orig(self)
+  end
+  term.kill = on_exit
+  term.on_exit = on_exit
+  api.nvim_create_autocmd('BufDelete', {
+    buffer = term.buf,
+    callback = function() on_exit(term) end,
+  })
+  return term
+end
+
 ---@param term? mterm.Term
 M.switch = function(term)
   if curr == term then return update_title() end
   curr = term
   if not M.win:valid() then return update_title() end -- when `:quit!`, win is not valid
-  if not term then return update_title() end -- delete to empty
+  if not term then return M.close() end -- delete to empty
   M.win:set_buf(term:get_buf())
   update_title()
 end
@@ -121,6 +158,23 @@ M.prev = function(term)
   M.switch(assert(slots:prev_of(term, true)))
 end
 
+---@param buf integer
+---@param name? string
+---@return mterm.Term
+M.add = function(buf, name)
+  local term = Faketerm(buf, name or uuid())
+  curr = curr or term
+  update_title()
+  return term
+end
+
+---@param term? mterm.Term
+M.kill = function(term)
+  term = term or curr
+  if not term then return end
+  term:kill()
+end
+
 ---@param opts? term.Opts|{}
 ---@return mterm.Term
 M.spawn = function(opts)
@@ -132,10 +186,8 @@ M.spawn = function(opts)
     width = config.width,
     height = config.height and (config.height - (M.size() > 1 and 1 or 0)) or nil,
     on_exit = function(...)
-      local neighbor = slots:next_of(term) or slots:prev_of(term)
+      term:on_exit()
       if on_exit then on_exit(...) end
-      slots:delete(term)
-      M.switch(neighbor)
     end,
     bo = { ft = 'mterm' },
   })
@@ -204,14 +256,21 @@ M.send_key = function(key, term)
   term = term or curr or M.spawn()
   local win = M.win:get_win()
   if not win then return end
-  with({ win = win, noautocmd = true }, function() vim.cmd.norm(vim.keycode(key)) end)
+  with({ win = win, noautocmd = true }, function()
+    if api.nvim_get_mode().mode == 't' then
+      vim.cmd.stopinsert()
+      vim.schedule_wrap(vim.cmd.norm(vim.keycode(key)))
+      return
+    end
+    vim.cmd.norm(vim.keycode(key))
+  end)
   term:set_cursor(api.nvim_win_get_cursor(win))
 end
 
 ---@param ctx? parse.ParseLineResult
 ---@param focus? boolean force force
 M.gotofile = function(ctx, focus)
-  ctx = ctx or u.parse.from_line(nil, false)
+  ctx = ctx or u.parse.from_line(api.nvim_get_current_line(), false)
   local win = vim.bo.filetype ~= 'mterm' and api.nvim_get_current_win()
     or fn.win_getid((fn.winnr('#')))
   if not ctx.filename or win == 0 then return '<c-w>gF' end
@@ -257,6 +316,7 @@ M.prev_dp = function(term)
   end)
 end
 
+M.is_opencode = function() return curr and table.concat(curr.opts.cmd, ' '):match('opencode') end
 M.opencode = function()
   ---@mod 'opencode'
   ---@class opencode.provider.Mterm : opencode.Provider

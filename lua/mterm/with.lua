@@ -45,9 +45,9 @@ local get_context_state = function(context)
     do
       local sc = scope == 'o' and scope_map[api.nvim_get_option_info2(name, {}).scope] or scope
 
-      res[sc][name] = res[sc][name] or vim[sc][name] or vim.NIL
+      res[sc][name] = vim.F.if_nil(res[sc][name], vim[sc][name], vim.NIL)
 
-      if sc ~= 'env' then res.go[name] = res.go[name] or vim.go[name] end
+      if sc ~= 'env' and res.go[name] == nil then res.go[name] = res.go[name] or vim.go[name] end
     end
   end
 
@@ -152,4 +152,4 @@ local function _with(context, f)
   return callback()
 end
 
-return vim._with or _with
+return _with

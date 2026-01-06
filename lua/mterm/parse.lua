@@ -70,7 +70,7 @@ M.render = function(buf, lnum, ctx)
     hl_mode = 'combine',
     virt_text_pos = 'overlay',
     virt_text = {
-      { ctx.prefix, 'Debug' },
+      { ctx.prefix },
       { ctx.filename, 'qfFileName' },
       { ':' },
       { ctx.lnum, 'qfLineNr' },

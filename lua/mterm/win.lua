@@ -64,7 +64,7 @@ local layouts = {
     win = -1,
   },
   right = {
-    width = 0.4,
+    width = 0.5,
     split = 'right',
     style = 'minimal',
     win = -1,
@@ -226,7 +226,7 @@ function M:open(buf, focus)
     callback = function()
       if not self:valid() then return true end
       if self:focused() or not self:in_tabpage() then return end
-      self:close()
+      if self.opts.layout == 'bot' then self:close() end
       return true
     end,
   })
