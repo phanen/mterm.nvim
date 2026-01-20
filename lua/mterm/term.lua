@@ -58,7 +58,7 @@ function M:spawn()
   if opts.bo then vim.iter(opts.bo):each(function(k, v) vim.bo[self.buf][k] = v end) end
   api.nvim_buf_call(self.buf, function()
     jobstart(opts.cmd, {
-      term = true,
+      term = fn.has('nvim-0.12') == 1 and true or nil,
       clear_env = opts.clear_env,
       cwd = opts.cwd,
       env = opts.env,
