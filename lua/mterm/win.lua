@@ -1,10 +1,3 @@
-local u = {
-  with = require('mterm.with'),
-  merge = function(...)
-    return vim.tbl_deep_extend('force', ...) -- nlua: ignore
-  end,
-}
-
 ---START INJECT class/win.lua
 
 local api, fn = vim.api, vim.fn
@@ -74,7 +67,7 @@ local layouts = {
 local pref = true and 'right' or 'left'
 M.pref = pref
 
-local with = vim._with or u.with ---@type fun(context: vim.context.mods, f: function): any
+local with = vim._with or require('mterm.with') ---@type fun(context: vim.context.mods, f: function): any
 
 local minimal_wo = {
   number = true,
@@ -117,14 +110,14 @@ local normalize_opts = function(opts)
   local col = opts.col and opts.col < 1 and math.ceil((_col - width) * opts.col) or opts.col
   local row = opts.row and opts.row < 1 and math.ceil((_row - height) * opts.row - 1) or opts.row
   ---@diagnostic disable-next-line: return-type-mismatch
-  return u.merge(opts, { width = width, height = height, col = col, row = row })
+  return require('mterm._').merge(opts, { width = width, height = height, col = col, row = row })
 end
 
 ---@param opts win.Cfg|{}
 ---@param layout win.layout
 ---@return win.Cfg
 local normalize_layout = function(opts, layout)
-  opts = u.merge(layouts[layout], opts)
+  opts = require('mterm._').merge(layouts[layout], opts)
   if layout ~= 'float' then
     opts.row = nil
     opts.col = nil
@@ -148,7 +141,7 @@ end
 ---@param opts? win.Opts|{}
 ---@return win.Win
 M.new = function(opts)
-  opts = u.merge(default, opts or {}) ---@type win.Opts
+  opts = require('mterm._').merge(default, opts or {}) ---@type win.Opts
   return setmetatable({
     opts = opts,
     config = normalize_layout(opts.config, opts.layout),
@@ -183,7 +176,7 @@ end
 ---@param buf? integer
 ---@param opts? win.Opts|{}
 function M:update(buf, opts)
-  if opts then self.opts = u.merge(self.opts, opts) end
+  if opts then self.opts = require('mterm._').merge(self.opts, opts) end
   self.config = normalize_layout(self.opts.config, self.opts.layout)
   local win = self:valid()
   if not win then return end

@@ -1,9 +1,3 @@
-local u = {
-  merge = function(...)
-    return vim.tbl_deep_extend('force', ...) -- nlua: ignore
-  end,
-}
-
 ---START INJECT class/term.lua
 
 ---@diagnostic disable: duplicate-type
@@ -44,7 +38,7 @@ M.__index = M
 ---@param opts? term.Opts|{}
 ---@return term.Term
 M.new = function(opts)
-  opts = u.merge(defaults, opts or {})
+  opts = require('mterm._').merge(defaults, opts or {})
   return setmetatable({ opts = opts }, { __index = M })
 end
 

@@ -1,17 +1,4 @@
-local u = {
-  with = require('mterm.with'),
-  class = {
-    lru = require('mterm.lru').new,
-    term = require('mterm.term').new,
-    win = require('mterm.win').new,
-  },
-  parse = require('mterm.parse'),
-  merge = function(...)
-    return vim.tbl_deep_extend('force', ...) -- nlua: ignore
-  end,
-}
-
----START INJECT ./mterm.lua
+---START INJECT mterm.lua
 
 local api, fn = vim.api, vim.fn
 local M = {}
@@ -22,12 +9,12 @@ local M = {}
 ---@field kill function
 ---@field _exiting? boolean
 
-local with = vim._with or u.with ---@type fun(context: vim.context.mods, f: function): any
+local with = vim._with or require('mterm.with') ---@type fun(context: vim.context.mods, f: function): any
 
 ---@class mterm.Slots :lru.Lru
 ---@field hash table<lru.key, mterm.Term>
 ---@field head mterm.Term
-local slots = u.class.lru()
+local slots = require('mterm.lru').new()
 
 ---@type mterm.Term?
 local curr
@@ -35,7 +22,7 @@ local curr
 M.curr = function() return curr end
 
 ---@type win.Win
-M.win = u.class.win({ config = { zindex = 100 } })
+M.win = require('mterm.win').new({ config = { zindex = 100 } })
 
 M.size = function() return slots.size end
 
@@ -84,7 +71,7 @@ end
 ---@return mterm.Term
 local Term = function(opts, key, fake)
   if slots:get(key) then error('duplicated key: ' .. key) end
-  local term = u.class.term(opts) ---@type mterm.Term
+  local term = require('mterm.term').new(opts) ---@type mterm.Term
   function term:on_exit()
     local neighbor = slots:next_of(self) or slots:prev_of(self)
     slots:delete(self)
@@ -94,14 +81,17 @@ local Term = function(opts, key, fake)
   slots:insert_after(curr or slots.head, term)
   if fake then return term end
   term:spawn()
-  term:on('CursorMoved', function(args) u.parse.render(args.buf, fn.line('.') - 1) end)
+  term:on(
+    'CursorMoved',
+    function(args) require('mterm.parse').render(args.buf, fn.line('.') - 1) end
+  )
   term:on('TermRequest', function(args)
     if not (args.data.sequence or args.data):match('^\027]133;A') then return end
     local ns = api.nvim_create_namespace('linter.debugprint')
     local prev_prompt, next_prompt = term:get_prompt_range()
     local buf = assert(term:get_buf())
     local lines = api.nvim_buf_get_lines(buf, prev_prompt + 1, next_prompt, false)
-    local bufdiags = u.parse.diags(lines)
+    local bufdiags = require('mterm.parse').diags(lines)
     for diagbuf, diags in pairs(bufdiags) do
       vim.diagnostic.set(ns, diagbuf, diags)
     end
@@ -182,7 +172,7 @@ M.spawn = function(opts)
   opts = opts or {}
   local on_exit = opts.on_exit
   local config = M.win:get_config()
-  opts = u.merge(opts, {
+  opts = require('mterm._').merge(opts, {
     width = config.width,
     height = config.height and (config.height - (M.size() > 1 and 1 or 0)) or nil,
     on_exit = function(...)
@@ -247,7 +237,7 @@ end
 ---@param term? mterm.Term
 M.send = function(cmd, term)
   term = term or curr or M.spawn()
-  vim.defer_fn(function() term:send(cmd) end, 100)
+  term:send(cmd)
 end
 
 ---@param key string
@@ -259,7 +249,9 @@ M.send_key = function(key, term)
   with({ win = win, noautocmd = true }, function()
     if api.nvim_get_mode().mode == 't' then
       vim.cmd.stopinsert()
-      vim.schedule_wrap(vim.cmd.norm(vim.keycode(key)))
+      vim.schedule(function()
+        with({ win = win, noautocmd = true }, function() vim.cmd.norm(vim.keycode(key)) end)
+      end)
       return
     end
     vim.cmd.norm(vim.keycode(key))
@@ -267,39 +259,14 @@ M.send_key = function(key, term)
   term:set_cursor(api.nvim_win_get_cursor(win))
 end
 
----@param ctx? parse.ParseLineResult
----@param focus? boolean force force
-M.gotofile = function(ctx, focus)
-  ctx = ctx or u.parse.from_line(api.nvim_get_current_line(), false)
-  local win = vim.bo.filetype ~= 'mterm' and api.nvim_get_current_win()
-    or fn.win_getid((fn.winnr('#')))
-  if not ctx.filename or win == 0 then return '<c-w>gF' end
-  vim.schedule(function()
-    local should_focus
-    with({ win = win, buf = api.nvim_win_get_buf(win) }, function()
-      if vim.fs.abspath(fn.bufname()) ~= vim.fs.abspath(ctx.filename) then
-        if not pcall(vim.cmd.buffer, ctx.filename) then pcall(vim.cmd.edit, ctx.filename) end
-        should_focus = false
-      end
-      if ctx.lnum and fn.line('.', win) ~= tonumber(ctx.lnum) then ---@diagnostic disable-next-line: param-type-mismatch
-        fn.cursor(ctx.lnum, tonumber(ctx.col) or 0)
-        should_focus = false
-      end
-      vim.cmd('norm! zz')
-    end)
-    if (should_focus ~= false or focus) and vim.bo.filetype == 'mterm' then M.toggle_or_focus() end
-  end)
-  return '<ignore>'
-end
-
 ---@param term? mterm.Term
 M.next_dp = function(term)
   term = term or assert(curr)
   local buf = assert(term:get_buf())
   term:next_dp(function(line, lnum)
-    local ctx = u.parse.from_line(line)
-    if not u.parse.render(buf, lnum - 1, ctx) then return end
-    M.gotofile(ctx)
+    local ctx = require('mterm.parse').from_line(line)
+    if not require('mterm.parse').render(buf, lnum - 1, ctx) then return end
+    require('mterm.gof').term_edit(ctx)
     return true
   end)
 end
@@ -309,14 +276,17 @@ M.prev_dp = function(term)
   term = term or assert(curr)
   local buf = assert(term:get_buf())
   term:prev_dp(function(line, lnum)
-    local ctx = u.parse.from_line(line)
-    if not u.parse.render(buf, lnum - 1, ctx) then return end
-    M.gotofile(ctx)
+    local ctx = require('mterm.parse').from_line(line)
+    if not require('mterm.parse').render(buf, lnum - 1, ctx) then return end
+    require('mterm.gof').term_edit(ctx)
     return true
   end)
 end
 
-M.is_opencode = function() return curr and table.concat(curr.opts.cmd, ' '):match('opencode') end
+M.is = function(pat) return curr and table.concat(curr.opts.cmd, ' '):match(pat) end
+
+M.is_opencode = function() return M.is('opencode') end
+
 M.opencode = function()
   ---@mod 'opencode'
   ---@class opencode.provider.Mterm : opencode.Provider
@@ -331,7 +301,8 @@ M.opencode = function()
   function O.new(opts) return setmetatable({ opts = opts or {} }, O) end
   function O.health() return true end
   function O:_get()
-    local opts = u.merge(self.opts, { cmd = { 'sh', '-c', self.cmd }, auto_close = true })
+    local opts =
+      require('mterm._').merge(self.opts, { cmd = { 'sh', '-c', self.cmd }, auto_close = true })
     self.term = self.term and self.term:is_running() and self.term or M.spawn(opts)
     return self.term
   end
