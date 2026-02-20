@@ -1,6 +1,6 @@
 ---START INJECT mterm.lua
 
-local api, fn = vim.api, vim.fn
+local api, fn, fs = vim.api, vim.fn, vim.fs
 local M = {}
 
 ---@class mterm.Term :lru.Node, term.Term
@@ -314,6 +314,101 @@ M.opencode = function()
     self.term = nil
   end ---@diagnostic enable
   return O
+end
+
+---@param chan integer
+---@return boolean?
+M.is_shell = function(chan)
+  if vim.bo.ft == 'fzf' then return false end
+  local is_running = fn.jobwait({ chan }, 0)[1] == -1
+  if not is_running then return true end
+  local info = api.nvim_get_chan_info(chan)
+  local cmd = info.argv[1]
+  local is_shell = cmd:match('%/fish$')
+    or cmd:match('%/bash$')
+    or cmd:match('%/zsh$')
+    or cmd:match('%/sh$')
+  if not is_shell then return false end
+  local children = api.nvim_get_proc_children(fn.jobpid(chan))
+  local dbg = {}
+  local only_has_atuin_bg_child = vim.iter(children):all(function(pid)
+    local out = vim.system({ 'ps', 'h', '-o', 'command', '-p', pid }):wait().stdout
+    out = assert(out):gsub('\n', '')
+    local ok = #out > 0 and out:match(vim.pesc('[atuin] <defunct>'))
+      or out:match(vim.pesc('atuin history end --exit'))
+    if not ok then dbg[#dbg + 1] = out end
+    return not not ok
+  end)
+  if not only_has_atuin_bg_child then pp(dbg) end
+  return only_has_atuin_bg_child
+end
+
+local LOCK = nil
+---@param is_rpc? boolean
+M.clear = function(is_rpc)
+  api.nvim_buf_clear_namespace(0, api.nvim_create_namespace('nvim.terminal.prompt'), 0, -1)
+  if require('mterm._').has_version('v0.12.0-dev-2239+ge254688016') then return end
+  if LOCK then return end
+  LOCK = true
+  local chan = vim.bo.channel
+  if not is_rpc and not M.is_shell(chan) then
+    LOCK = false
+    return api.nvim_chan_send(chan, vim.keycode '<c-l>')
+  end
+  if vim.bo.ft ~= 'mterm' then
+    api.nvim_win_set_buf(0, api.nvim_create_buf(false, true))
+    fn.jobstart({ vim.o.shell }, { term = true })
+  else
+    M.spawn()
+    M.next()
+  end
+  fn.jobstop(chan)
+  LOCK = false
+end
+
+local git_root = function()
+  local bufname = fn.bufname()
+  if bufname:match('oil://') then
+    local _, dir = require('oil.util').parse_url(bufname)
+    if _ then return dir end
+  end
+  if vim.b.gitsigns_status_dict then return vim.b.gitsigns_status_dict.root end
+  if api.nvim_win_get_config(0).relative ~= '' and vim.bo.bt == 'nofile' then
+    local altroot = vim.b[fn.bufnr('#')].gitsigns_status_dict
+    if altroot then return altroot end
+  end
+  return fs.root(0, '.git')
+end
+
+---@type { [string]: mterm.Term? }
+local TERMS = {}
+M.lazygit = function(path)
+  local cwd = git_root()
+  if not cwd then return end
+  local opts = {
+    cmd = not path and { 'lazygit' } or { 'lazygit', '--filter', path },
+    cwd = cwd,
+    auto_close = true,
+  }
+  local key = vim.inspect(opts)
+  local term = TERMS[key]
+  local is_init = not term or not term:is_running()
+  if is_init then TERMS[key] = M.spawn(opts) end
+  local send = (function()
+    if path then return false end
+    local cword = fn.expand('<cword>'):match('^%x%x%x%x%x%x')
+    if cword then
+      vim.cmd [[fclose!]]
+      return '4/' .. cword
+    end
+    local relpath = fs.relpath(cwd, fn.bufname())
+    if not relpath then return end
+    if relpath == '.' then relpath = '' end
+    return '2/' .. relpath
+  end)()
+  M.open(TERMS[key])
+  if not send then return end
+  vim.defer_fn(function() M.send(send, TERMS[key]) end, 100)
 end
 
 return M
