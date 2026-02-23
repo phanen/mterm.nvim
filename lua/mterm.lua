@@ -250,7 +250,10 @@ M.send_key = function(key, term)
     if api.nvim_get_mode().mode == 't' then
       vim.cmd.stopinsert()
       vim.schedule(function()
-        with({ win = win, noautocmd = true }, function() vim.cmd.norm(vim.keycode(key)) end)
+        with({ win = win, noautocmd = true }, function()
+          vim.cmd.norm(vim.keycode(key))
+          vim.cmd.startinsert()
+        end)
       end)
       return
     end
