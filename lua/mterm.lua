@@ -374,8 +374,8 @@ local git_root = function()
   end
   if vim.b.gitsigns_status_dict then return vim.b.gitsigns_status_dict.root end
   if api.nvim_win_get_config(0).relative ~= '' and vim.bo.bt == 'nofile' then
-    local altroot = vim.b[fn.bufnr('#')].gitsigns_status_dict
-    if altroot then return altroot end
+    local dict = vim.b[fn.bufnr('#')].gitsigns_status_dict
+    if dict then return dict.root end
   end
   return fs.root(0, '.git')
 end
