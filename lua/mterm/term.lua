@@ -133,9 +133,11 @@ end
 
 function M:redraw()
   if not self:is_running() then return end
-  local pid = fn.jobpid(vim.bo[self.buf].channel)
+  local pid = self:get_pid()
   uv.kill(pid, uv.constants.SIGWINCH)
 end
+
+function M:get_pid() return fn.jobpid(vim.bo[self.buf].channel) end
 
 function M:kill()
   if not self:is_running() then return end

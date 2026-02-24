@@ -291,6 +291,15 @@ M.is = function(pat) return curr and table.concat(curr.opts.cmd, ' '):match(pat)
 M.is_opencode = function() return M.is('opencode') end
 
 M.opencode = function()
+  ---@param pid integer
+  local function terminate(pid)
+    if vim.fn.has('unix') == 1 then
+      os.execute('kill -TERM -' .. pid .. ' 2>/dev/null')
+    else
+      pcall(vim.uv.kill, pid, 'SIGTERM')
+    end
+  end
+
   ---@mod 'opencode'
   ---@class opencode.provider.Mterm : opencode.Provider
   ---@field opts term.Opts
@@ -304,19 +313,23 @@ M.opencode = function()
   function O.new(opts) return setmetatable({ opts = opts or {} }, O) end
   function O.health() return true end
   function O:_get()
-    local opts =
-      require('mterm._').merge(self.opts, { cmd = { 'sh', '-c', self.cmd }, auto_close = true })
-    self.term = self.term and self.term:is_running() and self.term or M.spawn(opts)
+    self.term = self.term and self.term:is_running() and self.term or M.spawn(self.opts)
     return self.term
   end
   function O:toggle() M.toggle_or_focus(self:_get()) end
   function O:start() M.open(self:_get()) end
   function O:stop()
     if not self.term then return end
-    self.term:kill()
+    if self.term:is_running() then terminate(self.term:get_pid()) end
     self.term = nil
   end ---@diagnostic enable
-  return O
+  local opencode = O.new({ cmd = { 'opencode', '--port' }, auto_close = true })
+  api.nvim_create_autocmd('VimLeavePre', { callback = function() opencode:stop() end })
+  return {
+    start = function() opencode:start() end,
+    toggle = function() opencode:toggle() end,
+    stop = function() opencode:stop() end,
+  }
 end
 
 ---@param chan integer

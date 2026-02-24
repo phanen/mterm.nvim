@@ -10,11 +10,10 @@ bash .run.sh
 > [!NOTE]
 > Enhancement of terminal mode/cursor: https://github.com/phanen/tmode.nvim.
 
-## opencode provider
+## opencode
 
 ```lua
-package.preload['opencode.provider.mterm'] = function() return require('mterm').opencode() end
-vim.g.opencode_opts = { provider = { mterm = {}, enabled = 'mterm' } }
+vim.g.opencode_opts = { server = require('mterm').opencode() }
 ```
 
 ## todo
