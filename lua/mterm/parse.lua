@@ -3,6 +3,33 @@
 local M = {}
 local api, fn = vim.api, vim.fn
 
+---@param line string
+---@return string? filename
+---@return integer? lnum
+---@return integer? col
+local function from_stack_trace(line)
+  local patterns = {
+    { 'File "([^"]+)",%s+line (%d+)', nil },
+    { '%-?%-?>%s+([^:]+):(%d+):(%d+)', 'col' },
+    { '([/%w][^:]-%.%w+):(%d+):(%d+)', 'col' },
+    { '([/%w][^:]-%.%w+):(%d+)', nil },
+    { '%(([^:)]+):(%d+)%)', nil },
+    { 'from%s+([^:]+):(%d+)', nil },
+    { 'lua:%s+([^:]+):(%d+)', nil },
+  }
+  for _, pat in ipairs(patterns) do
+    local p, has_col = pat[1], pat[2]
+    if has_col == 'col' then
+      local file, lnum, col = line:match(p)
+      if file and lnum then return file, tonumber(lnum), tonumber(col) end
+    else
+      local file, lnum = line:match(p)
+      if file and lnum then return file, tonumber(lnum), nil end
+    end
+  end
+  return nil, nil, nil
+end
+
 local from_cword = function(cword)
   local word = fn.expand(cword or '<cWORD>')
   local file, lnum, col
@@ -37,19 +64,25 @@ M.from_line = function(line, only)
   line = line or api.nvim_get_current_line()
   only = only ~= false
   local prefix, filename, lnum, suffix = line:match('(DEBUGPRINT%[%d+%]:%s*)(%S+):(%d+)(.*)')
-  if not only and not prefix then
-    ---@diagnostic disable-next-line: redefined-local
-    local file, lnum, col = from_cword()
-    return { line = line, filename = file, lnum = lnum, col = col }
+  if only or prefix then
+    return {
+      line = line,
+      content = line:match('^DEBUGPRINT%[%d+%]:%s*(.*)'),
+      filename = filename,
+      lnum = lnum,
+      prefix = prefix,
+      suffix = suffix,
+    }
   end
-  return {
-    line = line,
-    content = line:match('^DEBUGPRINT%[%d+%]:%s*(.*)'),
-    filename = filename,
-    lnum = lnum,
-    prefix = prefix,
-    suffix = suffix,
-  }
+
+  local matched_file, matched_lnum, matched_col = from_stack_trace(line)
+  if matched_file then
+    return { line = line, filename = matched_file, lnum = matched_lnum, col = matched_col }
+  end
+
+  ---@diagnostic disable-next-line: redefined-local
+  local file, lnum, col = from_cword()
+  return { line = line, filename = file, lnum = lnum, col = col }
 end
 
 local mark ---@type integer?
