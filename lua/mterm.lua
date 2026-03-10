@@ -415,12 +415,12 @@ M.lazygit = function(path)
     local cword = fn.expand('<cword>'):match('^%x%x%x%x%x%x')
     if cword then
       vim.cmd [[fclose!]]
-      return '4/' .. cword
+      return '4/' .. cword .. '\r'
     end
     local relpath = fs.relpath(cwd, fn.bufname())
     if not relpath then return end
     if relpath == '.' then relpath = '' end
-    return '2/' .. relpath
+    return '2/' .. relpath .. vim.keycode('<esc>')
   end)()
   M.open(TERMS[key])
   if not send then return end

@@ -147,7 +147,7 @@ end
 ---@param cmd string
 function M:send(cmd)
   if not self:is_running() then return end
-  api.nvim_chan_send(vim.bo[self.buf].channel, cmd .. '\r')
+  api.nvim_chan_send(vim.bo[self.buf].channel, cmd)
 end
 
 local ns = api.nvim_create_namespace('nvim.terminal.prompt')
