@@ -312,19 +312,38 @@ M.opencode = function()
   ---@return opencode.provider.Mterm
   function O.new(opts) return setmetatable({ opts = opts or {} }, O) end
   function O.health() return true end
+  function O:_is_running() return self.term and self.term:is_running() end
+  local group = api.nvim_create_augroup('opencode', {})
+  function O:_fix_shape()
+    local pty = api.nvim_get_chan_info(vim.bo[self.term:get_buf()].channel).pty
+    vim.system({ 'sh', '-c', 'printf "\\e[6 q" > ' .. pty }) -- beam cursor
+  end
   function O:_get()
-    self.term = self.term and self.term:is_running() and self.term or M.spawn(self.opts)
+    if not self:_is_running() then
+      self.term = M.spawn(self.opts)
+      api.nvim_create_autocmd('TextChangedT', {
+        buffer = self.term:get_buf(),
+        group = group,
+        callback = function(ev)
+          if not self:_is_running() then return true end
+          self:_fix_shape()
+          if vim.b[self.term:get_buf()].changedtick > 10 then return true end
+        end,
+      })
+    end
     return self.term
   end
   function O:toggle() M.toggle_or_focus(self:_get()) end
   function O:start() M.open(self:_get()) end
   function O:stop()
-    if not self.term then return end
-    if self.term:is_running() then terminate(self.term:get_pid()) end
+    if self:_is_running() then terminate(self.term:get_pid()) end
     self.term = nil
   end ---@diagnostic enable
   local opencode = O.new({ cmd = { 'opencode', '--port' }, auto_close = true })
-  api.nvim_create_autocmd('VimLeavePre', { callback = function() opencode:stop() end })
+  api.nvim_create_autocmd('VimLeavePre', {
+    group = group,
+    callback = function() opencode:stop() end,
+  })
   return {
     start = function() opencode:start() end,
     toggle = function() opencode:toggle() end,
