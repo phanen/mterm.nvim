@@ -52,6 +52,8 @@ M.term_edit = function(ctx, focus)
   local win = use_altwin and fn.win_getid((fn.winnr('#'))) or api.nvim_get_current_win()
   local filepath = ctx.filename
   if not filepath or win == 0 then return feed('gF', 'n', false) end
+  filepath = vim.fs.normalize(filepath)
+  if not vim.uv.fs_stat(filepath) then return end
   with({ win = win }, function()
     if not buf_edited(nil, filepath) then assert(set_buf(assert(load_buf(filepath)))) end
     local pos = {
