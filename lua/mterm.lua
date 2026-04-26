@@ -205,7 +205,7 @@ M.close = function() M.win:close() end
 M.toggle = function(term, focus)
   term = term or curr
   if term == curr and M.win:try_close() then return end
-  M.open(term, focus) -- not open/reopen in curtab/term change buf
+  M.open(term, focus) -- not open or "reopen in curtab" or "update buf"
 end
 
 M.toggle_layout = function()
@@ -431,7 +431,7 @@ M.lazygit = function(path)
   if is_init then TERMS[key] = M.spawn(opts) end
   local send = (function()
     if path then return false end
-    local cword = fn.expand('<cword>'):match('^%x%x%x%x%x%x')
+    local cword = (vim.F.nil_wrap(fn.expand)('<cword>') or ''):match('^%x%x%x%x%x%x')
     if cword then
       vim.cmd [[fclose!]]
       return '4/' .. cword .. '\r'
