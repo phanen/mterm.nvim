@@ -381,8 +381,11 @@ end
 local LOCK = nil
 ---@param is_rpc? boolean
 M.clear = function(is_rpc)
-  api.nvim_buf_clear_namespace(0, api.nvim_create_namespace('nvim.terminal.prompt'), 0, -1)
-  if require('mterm._').has_version('v0.12.0-dev-2239+ge254688016') then return end
+  if require('mterm._').has_version('v0.12.0-dev-2239+ge254688016') then
+    api.nvim_buf_clear_namespace(0, api.nvim_create_namespace('nvim.terminal.prompt'), 0, -1)
+    api.nvim_buf_clear_namespace(0, api.nvim_create_namespace('my.nvim.terminal.prompt'), 0, -1)
+    return
+  end
   if LOCK then return end
   LOCK = true
   local chan = vim.bo.channel
