@@ -43,6 +43,24 @@ end
 
 local feed = api.nvim_feedkeys
 
+local codex_edited_hunk = '^%s*•%s*Edited%s+(.+)%s+%(%+%d+%s*-%d+%)%s*$'
+
+---@param win integer
+---@return string? filepath
+---@return integer? lnum
+local peek_codex_diff = function(win)
+  local buf = api.nvim_win_get_buf(win)
+  local row = api.nvim_win_get_cursor(win)[1]
+  local line = api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ''
+  local lnum = tonumber(line:match('^%s*(%d+)'))
+  if not lnum then return end
+  for i = row, 1, -1 do
+    local header = api.nvim_buf_get_lines(buf, i - 1, i, false)[1] or ''
+    local filepath = header:match(codex_edited_hunk)
+    if filepath then return filepath, lnum end
+  end
+end
+
 ---@param ctx? parse.ParseLineResult
 ---@param focus? boolean force focus the new edit buffer
 M.term_edit = function(ctx, focus)
@@ -50,7 +68,16 @@ M.term_edit = function(ctx, focus)
   local ft = vim.bo.filetype
   local use_altwin = (ft == 'mterm' or api.nvim_win_get_config(0).relative ~= '')
   local win = use_altwin and fn.win_getid((fn.winnr('#'))) or api.nvim_get_current_win()
-  local filepath = ctx.filename
+  local filepath = ctx and ctx.filename
+  if vim.b.is_codex then
+    local codex_filepath, codex_lnum = peek_codex_diff(0)
+    if codex_filepath and codex_lnum then
+      filepath = codex_filepath
+      ctx = ctx or {}
+      ctx.filename = codex_filepath
+      ctx.lnum = codex_lnum
+    end
+  end
   if not filepath or win == 0 then return feed('gF', 'n', false) end
   filepath = vim.fs.normalize(filepath)
   if not vim.uv.fs_stat(filepath) then
