@@ -44,20 +44,45 @@ end
 local feed = api.nvim_feedkeys
 
 local codex_edited_hunk = '^%s*•%s*Edited%s+(.+)%s+%(%+%d+%s*-%d+%)%s*$'
-local opencode_edited_hunk = '^%s*←%s*Edit%s+(.+)%s*$'
+local opencode_edited_hunk = '^%s*┃%s*←%s*Edit%s+(.-)%s*$'
+local opencode_wrote_hunk = '^%s*┃%s*#%s*Wrote%s+(.-)%s*$'
+
+---@param line string
+---@return integer?
+local parse_codex_lnum = function(line) return tonumber(line:match('^%s*(%d+)')) end
+
+---@param line string
+---@return integer?
+local parse_opencode_lnum = function(line) return tonumber(line:match('^%s*┃%s*(%d+)')) end
 
 ---@param win integer
 ---@return string? filepath
 ---@return integer? lnum
-local peek_edit_diff = function(win)
+local peek_codex_diff = function(win)
   local buf = api.nvim_win_get_buf(win)
   local row = api.nvim_win_get_cursor(win)[1]
   local line = api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ''
-  local lnum = tonumber(line:match('^%s*(%d+)'))
+  local lnum = parse_codex_lnum(line)
   if not lnum then return end
   for i = row, 1, -1 do
     local header = api.nvim_buf_get_lines(buf, i - 1, i, false)[1] or ''
-    local filepath = header:match(codex_edited_hunk) or header:match(opencode_edited_hunk)
+    local filepath = header:match(codex_edited_hunk)
+    if filepath then return filepath, lnum end
+  end
+end
+
+---@param win integer
+---@return string? filepath
+---@return integer? lnum
+local peek_opencode_diff = function(win)
+  local buf = api.nvim_win_get_buf(win)
+  local row = api.nvim_win_get_cursor(win)[1]
+  local line = api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ''
+  local lnum = parse_opencode_lnum(line)
+  if not lnum then return end
+  for i = row, 1, -1 do
+    local header = api.nvim_buf_get_lines(buf, i - 1, i, false)[1] or ''
+    local filepath = header:match(opencode_edited_hunk) or header:match(opencode_wrote_hunk)
     if filepath then return filepath, lnum end
   end
 end
@@ -70,8 +95,16 @@ M.term_edit = function(ctx, focus)
   local use_altwin = (ft == 'mterm' or api.nvim_win_get_config(0).relative ~= '')
   local win = use_altwin and fn.win_getid((fn.winnr('#'))) or api.nvim_get_current_win()
   local filepath = ctx and ctx.filename
-  if vim.b.is_codex or vim.b.is_opencode then
-    local edit_filepath, edit_lnum = peek_edit_diff(0)
+  if vim.b.is_codex then
+    local edit_filepath, edit_lnum = peek_codex_diff(0)
+    if edit_filepath and edit_lnum then
+      filepath = edit_filepath
+      ctx = ctx or {}
+      ctx.filename = edit_filepath
+      ctx.lnum = edit_lnum
+    end
+  elseif vim.b.is_opencode then
+    local edit_filepath, edit_lnum = peek_opencode_diff(0)
     if edit_filepath and edit_lnum then
       filepath = edit_filepath
       ctx = ctx or {}
