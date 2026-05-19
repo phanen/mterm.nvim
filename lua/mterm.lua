@@ -327,7 +327,6 @@ M.opencode = function()
         callback = function(ev)
           if not self:_is_running() then return true end
           self:_fix_shape()
-          if vim.b[self.term:get_buf()].changedtick > 10 then return true end
         end,
       })
     end

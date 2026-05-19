@@ -268,4 +268,6 @@ function M:toggle(buf, focus)
   self:open(buf, focus)
 end
 
+function M:goto_tabpage(win) api.nvim_win_set_config(self.win, { win = win }) end
+
 return M

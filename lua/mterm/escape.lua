@@ -14,4 +14,11 @@ M.glob = function(str)
   return (str:gsub('[%{}[%]]', function(x) return [[\]] .. x end))
 end
 
+M.search = function(str)
+  local ty = '/' or '?'
+  str = vim.fn.substitute(vim.fn.escape(str, [[\]] .. ty), [[\n]], [[\\n]], 'g')
+  str = vim.fn.substitute(str, [[\r]], [[\\r]], 'g')
+  return [[\V]] .. str
+end
+
 return M

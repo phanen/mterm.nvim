@@ -26,7 +26,6 @@ M.separator = function(path)
       if M.byte_is_separator(s) then return string.char(s) end
     end
   end
-  vim.F.if_nil()
   return string.char(if_win(M.bslash_byte, M.fslash_byte))
 end
 
