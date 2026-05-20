@@ -87,6 +87,20 @@ local peek_opencode_diff = function(win)
   end
 end
 
+---@param ... string
+---@return boolean
+local is_cmd = function(...)
+  local command = (vim.b.last_term_cmd or table.concat(
+    api.nvim_get_chan_info(vim.bo.channel).argv,
+    ' '
+  )):match('^(%S+)') or ''
+  command = require('mterm.path').tail(command)
+  for _, name in ipairs({ ... }) do
+    if command:match('^' .. vim.pesc(name) .. '$') then return true end
+  end
+  return false
+end
+
 ---@param ctx? parse.ParseLineResult
 ---@param focus? boolean force focus the new edit buffer
 M.term_edit = function(ctx, focus)
@@ -95,7 +109,7 @@ M.term_edit = function(ctx, focus)
   local use_altwin = (ft == 'mterm' or api.nvim_win_get_config(0).relative ~= '')
   local win = use_altwin and fn.win_getid((fn.winnr('#'))) or api.nvim_get_current_win()
   local filepath = ctx and ctx.filename
-  if vim.b.is_codex then
+  if is_cmd('codex') then
     local edit_filepath, edit_lnum = peek_codex_diff(0)
     if edit_filepath and edit_lnum then
       filepath = edit_filepath
@@ -103,7 +117,7 @@ M.term_edit = function(ctx, focus)
       ctx.filename = edit_filepath
       ctx.lnum = edit_lnum
     end
-  elseif vim.b.is_opencode then
+  elseif is_cmd('opencode') then
     local edit_filepath, edit_lnum = peek_opencode_diff(0)
     if edit_filepath and edit_lnum then
       filepath = edit_filepath

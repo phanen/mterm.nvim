@@ -86,6 +86,8 @@ local Term = function(opts, key, fake)
     function(args) require('mterm.parse').render(args.buf, fn.line('.') - 1) end
   )
   term:on('TermRequest', function(args)
+    local cmd = (args.data.sequence or args.data):match('^\027]133;C;cmdline_url=(.*)')
+    if cmd then vim.b[args.buf].last_term_cmd = vim.uri_decode(cmd) end
     if not (args.data.sequence or args.data):match('^\027]133;A') then return end
     local ns = api.nvim_create_namespace('linter.debugprint')
     local prev_prompt, next_prompt = term:get_prompt_range()
