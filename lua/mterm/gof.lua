@@ -44,6 +44,7 @@ end
 local feed = api.nvim_feedkeys
 
 local codex_edited_hunk = '^%s*•%s*Edited%s+(.+)%s+%(%+%d+%s*-%d+%)%s*$'
+local codex_added_hunk = '^%s*•%s*Added%s+(.+)%s+%(%+%d+%s*-%d+%)%s*$'
 local opencode_edited_hunk = '^%s*┃%s*←%s*Edit%s+(.-)%s*$'
 local opencode_wrote_hunk = '^%s*┃%s*#%s*Wrote%s+(.-)%s*$'
 
@@ -66,7 +67,7 @@ local peek_codex_diff = function(win)
   if not lnum then return end
   for i = row, 1, -1 do
     local header = api.nvim_buf_get_lines(buf, i - 1, i, false)[1] or ''
-    local filepath = header:match(codex_edited_hunk)
+    local filepath = header:match(codex_edited_hunk) or header:match(codex_added_hunk)
     if filepath then return filepath, lnum end
   end
 end
