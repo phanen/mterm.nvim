@@ -129,12 +129,12 @@ M.term_edit = function(ctx, focus)
   end
   if not filepath or win == 0 then return feed('gF', 'n', false) end
   filepath = vim.fs.normalize(filepath)
-  if not vim.uv.fs_stat(filepath) then
-    filepath = vim.fs.joinpath('src', filepath)
-    if not vim.uv.fs_stat(filepath) then return end
-  end
   with({ win = win }, function()
-    if not buf_edited(nil, filepath) then assert(set_buf(assert(load_buf(filepath)))) end
+    if not vim.uv.fs_stat(filepath) then
+      vim.cmd.find(filepath)
+    elseif not buf_edited(nil, filepath) then
+      assert(set_buf(assert(load_buf(filepath))))
+    end
     local pos = {
       require('mterm._').tointeger(ctx.lnum) or 1,
       math.max((require('mterm._').tointeger(ctx.col) or 1) - 1, 0),
