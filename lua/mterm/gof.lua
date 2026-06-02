@@ -45,6 +45,10 @@ local feed = api.nvim_feedkeys
 
 local codex_edited_hunk = '^%s*•%s*Edited%s+(.+)%s+%(%+%d+%s*-%d+%)%s*$'
 local codex_added_hunk = '^%s*•%s*Added%s+(.+)%s+%(%+%d+%s*-%d+%)%s*$'
+local codex_file_hunks = {
+  '^%s*├%s+(.+)%s+%(%+%d+%s*-%d+%)%s*$',
+  '^%s*└%s+(.+)%s+%(%+%d+%s*-%d+%)%s*$',
+}
 local opencode_edited_hunk = '^%s*┃%s*←%s*Edit%s+(.-)%s*$'
 local opencode_wrote_hunk = '^%s*┃%s*#%s*Wrote%s+(.-)%s*$'
 
@@ -55,6 +59,16 @@ local parse_codex_lnum = function(line) return tonumber(line:match('^%s*(%d+)'))
 ---@param line string
 ---@return integer?
 local parse_opencode_lnum = function(line) return tonumber(line:match('^%s*┃%s*(%d+)')) end
+
+---@param line string
+---@return string?
+local parse_codex_filepath = function(line)
+  for _, pattern in ipairs(codex_file_hunks) do
+    local filepath = line:match(pattern)
+    if filepath then return filepath end
+  end
+  return line:match(codex_edited_hunk) or line:match(codex_added_hunk)
+end
 
 ---@param win integer
 ---@return string? filepath
@@ -67,7 +81,7 @@ local peek_codex_diff = function(win)
   if not lnum then return end
   for i = row, 1, -1 do
     local header = api.nvim_buf_get_lines(buf, i - 1, i, false)[1] or ''
-    local filepath = header:match(codex_edited_hunk) or header:match(codex_added_hunk)
+    local filepath = parse_codex_filepath(header)
     if filepath then return filepath, lnum end
   end
 end
